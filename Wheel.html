@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="vi">
+ 
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wheel</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: sans-serif;
+            font-weight: bold !important;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background: purple;
+            color: white;
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            gap: 40px;
+        }
+
+        .wheel-area {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            width: 600px;
+            height: 600px;
+            transition: transform 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+            transform-origin: center top;
+            margin-left: 20px;
+            flex-shrink: 0;
+        }
+
+        .wheel-container {
+            width: 500px;
+            height: 500px;
+            position: relative;
+        }
+
+        #wheelGraphic {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 5px solid white;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            transition-property: transform;
+            transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            display: block;
+            background-image: url('./Nón.png');
+            position: relative;
+        }
+
+        #specialValuePopup {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: purple;
+            color: white;
+            padding: 12px 24px;
+            font-size: 26px;
+            border-radius: 8px;
+            border: 3px solid white;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.7);
+            z-index: 999;
+            display: none;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .items-ring {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .placed-item {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform-origin: center center;
+            display: none;
+        }
+
+        .placed-item img {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            object-fit: fill;
+            filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.5));
+        }
+
+        .placed-item.is-card img {
+            top: 15px;
+            width: 10.5%;
+            max-height: 55px;
+            object-fit: contain;
+            clip-path: none;
+        }
+
+        .placed-item.is-wedge img {
+            top: 13px;
+            width: 13.5%;
+            height: 28%;
+            clip-path: polygon(0% 0%, 100% 0%, 78.25% 100%, 21.75% 100%);
+            object-fit: fill;
+        }
+
+        /* ĐÃ SỬA CÂN BẰNG TUYỆT ĐỐI VÒNG CHẤM TRÒN */
+        .dots-ring {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .dot-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform-origin: center center;
+        }
+
+        .dot {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background-color: #ffffff;
+            border-radius: 50%;
+            top: 3.5px;
+            left: 50%;
+            transform: translateX(-50%);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+        }
+
+        .pointer-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform-origin: center center;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .wrapper-red {
+            transform: rotate(-30deg);
+        }
+
+        .wrapper-yellow {
+            transform: rotate(0deg);
+        }
+
+        .wrapper-blue {
+            transform: rotate(30deg);
+        }
+
+        .pointer-body {
+            position: absolute;
+            top: -57.5px;
+            left: 50%;
+            transform: translateX(-50%);
+            filter: drop-shadow(0px 3px 5px rgba(0, 0, 0, 0.4));
+        }
+
+        .pointer-body svg path {
+            transition: fill 0.2s;
+        }
+
+        #pointer-red {
+            --p-color: #FFFFFF;
+        }
+
+        #pointer-yellow {
+            --p-color: #FFFFFF;
+        }
+
+        #pointer-blue {
+            --p-color: #FFFFFF;
+        }
+
+        .players-scoreboard {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            max-width: 650px;
+        }
+
+        .player-row {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .score-boxes {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 12px;
+        }
+
+        .score-box {
+            flex: 1;
+            padding: 12px;
+            font-size: 22px;
+            text-align: center;
+            border-radius: 8px;
+            border: 2px solid white;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        }
+
+        .row-red .score-box {
+            background: #ff0000;
+            color: #ffffff;
+        }
+
+        .row-yellow .score-box {
+            background: #ffff00;
+            color: #000000;
+            border-color: #000000;
+        }
+
+        .row-blue .score-box {
+            background: #0000ff;
+            color: #ffffff;
+        }
+
+        .cards-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .cards-line {
+            display: flex;
+            gap: 6px;
+            justify-content: space-between;
+        }
+
+        .card-slot {
+            flex: 1;
+            padding: 8px 4px;
+            font-size: 11px;
+            text-align: center;
+            border-radius: 5px;
+            background: #000000;
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: background 0.3s, color 0.3s;
+        }
+
+        .card-slot.active {
+            background: green !important;
+            color: white !important;
+            border-color: #000000;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="wheel-area" id="wheelArea">
+        <div class="wheel-container" id="wheelContainer">
+            <div id="wheelGraphic">
+                <div class="items-ring" id="itemsRing"></div>
+                <div class="dots-ring" id="dotsRing"></div>
+            </div>
+            <div id="specialValuePopup">0 điểm</div>
+            <div class="pointer-wrapper wrapper-red">
+                <div class="pointer-body" id="pointer-red">
+                    <svg width="46" height="60" viewBox="0 0 46 60" style="display: block;">
+                        <path d="M23,60 C9,38 0,28 0,18 A23,18 0 0,1 46,18 C46,28 37,38 23,60 Z" fill="var(--p-color)"
+                            stroke="white" stroke-width="2" stroke-linejoin="round" />
+                    </svg>
+                </div>
+            </div>
+            <div class="pointer-wrapper wrapper-yellow">
+                <div class="pointer-body" id="pointer-yellow">
+                    <svg width="46" height="60" viewBox="0 0 46 60" style="display: block;">
+                        <path d="M23,60 C9,38 0,28 0,18 A23,18 0 0,1 46,18 C46,28 37,38 23,60 Z" fill="var(--p-color)"
+                            stroke="white" stroke-width="2" stroke-linejoin="round" />
+                    </svg>
+                </div>
+            </div>
+            <div class="pointer-wrapper wrapper-blue">
+                <div class="pointer-body" id="pointer-blue">
+                    <svg width="46" height="60" viewBox="0 0 46 60" style="display: block;">
+                        <path d="M23,60 C9,38 0,28 0,18 A23,18 0 0,1 46,18 C46,28 37,38 23,60 Z" fill="var(--p-color)"
+                            stroke="white" stroke-width="2" stroke-linejoin="round" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="players-scoreboard">
+        <div class="player-row row-red" id="row-red">
+            <div class="score-boxes">
+                <div class="score-box" id="display-red-round">0</div>
+                <div class="score-box" id="display-red-total">0</div>
+            </div>
+            <div class="cards-grid">
+                <div class="cards-line">
+                    <div class="card-slot" data-card="0">Thẻ 1/2 (1)</div>
+                    <div class="card-slot" data-card="1">Thẻ 1/2 (2)</div>
+                    <div class="card-slot" data-card="2">Cơ Hội</div>
+                    <div class="card-slot" data-card="3">Kháng Mất Điểm</div>
+                    <div class="card-slot" data-card="4">10.000</div>
+                    <div class="card-slot" data-card="5">1 Triệu</div>
+                </div>
+                <div class="cards-line" style="padding: 0 4%;">
+                    <div class="card-slot" data-card="6">Thẻ Nhân Đôi</div>
+                    <div class="card-slot" data-card="7">Bảo Vệ</div>
+                    <div class="card-slot" data-card="8">Thẻ Thêm Lượt</div>
+                    <div class="card-slot" data-card="9">Ô Nhân Đôi</div>
+                    <div class="card-slot" data-card="10">Ô Thêm Lượt</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="player-row row-yellow" id="row-yellow">
+            <div class="score-boxes">
+                <div class="score-box" id="display-yellow-round">0</div>
+                <div class="score-box" id="display-yellow-total">0</div>
+            </div>
+            <div class="cards-grid">
+                <div class="cards-line">
+                    <div class="card-slot" data-card="0">Thẻ 1/2 (1)</div>
+                    <div class="card-slot" data-card="1">Thẻ 1/2 (2)</div>
+                    <div class="card-slot" data-card="2">Cơ Hội</div>
+                    <div class="card-slot" data-card="3">Kháng Mất Điểm</div>
+                    <div class="card-slot" data-card="4">10.000</div>
+                    <div class="card-slot" data-card="5">1 Triệu</div>
+                </div>
+                <div class="cards-line" style="padding: 0 4%;">
+                    <div class="card-slot" data-card="6">Thẻ Nhân Đôi</div>
+                    <div class="card-slot" data-card="7">Bảo Vệ</div>
+                    <div class="card-slot" data-card="8">Thẻ Thêm Lượt</div>
+                    <div class="card-slot" data-card="9">Ô Nhân Đôi</div>
+                    <div class="card-slot" data-card="10">Ô Thêm Lượt</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="player-row row-blue" id="row-blue">
+            <div class="score-boxes">
+                <div class="score-box" id="display-blue-round">0</div>
+                <div class="score-box" id="display-blue-total">0</div>
+            </div>
+            <div class="cards-grid">
+                <div class="cards-line">
+                    <div class="card-slot" data-card="0">Thẻ 1/2 (1)</div>
+                    <div class="card-slot" data-card="1">Thẻ 1/2 (2)</div>
+                    <div class="card-slot" data-card="2">Cơ Hội</div>
+                    <div class="card-slot" data-card="3">Kháng Mất Điểm</div>
+                    <div class="card-slot" data-card="4">10.000</div>
+                    <div class="card-slot" data-card="5">1 Triệu</div>
+                </div>
+                <div class="cards-line" style="padding: 0 4%;">
+                    <div class="card-slot" data-card="6">Thẻ Nhân Đôi</div>
+                    <div class="card-slot" data-card="7">Bảo Vệ</div>
+                    <div class="card-slot" data-card="8">Thẻ Thêm Lượt</div>
+                    <div class="card-slot" data-card="9">Ô Nhân Đôi</div>
+                    <div class="card-slot" data-card="10">Ô Thêm Lượt</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var supabaseUrl = 'https://vjwwbzjzcbtkksehwfll.supabase.co';
+        var supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZqd3diemp6Y2J0a2tzZWh3ZmxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NDIyOTYsImV4cCI6MjA5NTUxODI5Nn0.Zcn4hvlLtRirM-SPGrFvu3ivu8RYF9WngvbxCMCGfh4';
+        var supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        let currentRotation = 0;
+        let isSpecialMode = false;
+        let specialWedges = [];
+
+        const wheelGraphic = document.getElementById('wheelGraphic');
+        const wheelArea = document.getElementById('wheelArea');
+        const itemsRing = document.getElementById('itemsRing');
+        const specialValuePopup = document.getElementById('specialValuePopup');
+
+        const itemsPlacementConfig = {
+            "Thẻ Phần thưởng 1": { angle: 22.5, img: "Thẻ Phần Thưởng.png" },
+            "Thẻ Phần thưởng 2": { angle: 187.5, img: "Thẻ Phần Thưởng.png" },
+            "Thẻ Phần thưởng 3": { angle: 262.5, img: "Thẻ Phần Thưởng.png" },
+            "Thẻ Phần thưởng 4": { angle: 337.5, img: "Thẻ Phần Thưởng.png" },
+            "Thẻ Bí Mật 1": { angle: 112.5, img: "Thẻ Bí Mật.png" },
+            "Thẻ Bí Mật 2": { angle: 247.5, img: "Thẻ Bí Mật.png" },
+            "Thẻ Bảo vệ": { angle: 217.5, img: "Thẻ Bảo Vệ.png" },
+            "Thẻ Thêm lượt": { angle: 322.5, img: "Thẻ Thêm Lượt.png" },
+            "Thẻ Cơ Hội": { angle: 52.5, img: "Thẻ Cơ Hội.png" },
+            "Thẻ Kháng Mất điểm": { angle: 157.5, img: "Thẻ Kháng Mất Điểm.png" },
+            "Ô 100.000": { angle: 172.5, img: "Ô 100000.png" },
+            "Ô Mất điểm": { angle: 292.5, img: "Ô Mất Điểm.png" },
+            "Ô 2.000": { angle: 97.5, img: "Ô 2000.png" },
+            "Ô 2.500 1": { angle: 97.5, img: "Ô 2500.png" },
+            "Ô 2.500 2": { angle: 187.5, img: "Ô 2500.png" },
+            "Ô 2.500 3": { angle: 262.5, img: "Ô 2500.png" },
+            "Ô 2.500 4": { angle: 337.5, img: "Ô 2500.png" }
+        };
+
+        Object.keys(itemsPlacementConfig).forEach(itemName => {
+            const config = itemsPlacementConfig[itemName];
+            const itemWrapper = document.createElement('div');
+            itemWrapper.className = 'placed-item';
+            if (itemName.startsWith("Thẻ")) {
+                itemWrapper.classList.add('is-card');
+            } else {
+                itemWrapper.classList.add('is-wedge');
+            }
+            itemWrapper.id = 'render-item-' + itemName.replace(/\s+/g, '_');
+            itemWrapper.style.transform = `rotate(${config.angle}deg)`;
+
+            const imgEl = document.createElement('img');
+            imgEl.src = './' + config.img;
+            imgEl.alt = itemName;
+            itemWrapper.appendChild(imgEl);
+            itemsRing.appendChild(itemWrapper);
+        });
+
+        const dotsRing = document.getElementById('dotsRing');
+        for (let i = 0; i < 72; i++) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'dot-wrapper';
+            wrapper.style.transform = `rotate(${i * 5}deg)`;
+            const dot = document.createElement('div');
+            dot.className = 'dot';
+            wrapper.appendChild(dot);
+            dotsRing.appendChild(wrapper);
+        }
+
+        function saveWheelState() {
+            const state = {
+                currentRotation: currentRotation,
+                isSpecialMode: isSpecialMode,
+                specialWedges: specialWedges,
+                wheelDisplay: wheelGraphic.style.display,
+                wheelBg: wheelGraphic.style.backgroundImage,
+                zoomed: wheelArea.classList.contains('zoomed'),
+                popupDisplay: specialValuePopup.style.display,
+                popupText: specialValuePopup.innerText,
+                itemsState: {}
+            };
+            Object.keys(itemsPlacementConfig).forEach(itemName => {
+                const targetId = 'render-item-' + itemName.replace(/\s+/g, '_');
+                const el = document.getElementById(targetId);
+                if (el) state.itemsState[itemName] = el.style.display;
+            });
+            localStorage.setItem('wheel_last_state', JSON.stringify(state));
+        }
+
+        function loadWheelState() {
+            const saved = localStorage.getItem('wheel_last_state');
+            if (!saved) return;
+            try {
+                const state = JSON.parse(saved);
+                currentRotation = state.currentRotation || 0;
+                isSpecialMode = state.isSpecialMode || false;
+                specialWedges = state.specialWedges || [];
+
+                wheelGraphic.style.transition = 'none';
+                wheelGraphic.style.transform = 'rotate(' + currentRotation + 'deg)';
+                wheelGraphic.style.display = state.wheelDisplay || 'block';
+                wheelGraphic.style.backgroundImage = state.wheelBg || "url('./Nón.png')";
+
+                if (state.zoomed) wheelArea.classList.add('zoomed');
+                else wheelArea.classList.remove('zoomed');
+
+                specialValuePopup.style.display = state.popupDisplay || 'none';
+                specialValuePopup.innerText = state.popupText || '0 điểm';
+
+                if (state.itemsState) {
+                    Object.keys(state.itemsState).forEach(itemName => {
+                        const targetId = 'render-item-' + itemName.replace(/\s+/g, '_');
+                        const el = document.getElementById(targetId);
+                        if (el) el.style.display = state.itemsState[itemName];
+                    });
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        function executeToggleItem(itemName, isShow) {
+            if (itemName === "Ô 5.000") return;
+            const targetId = 'render-item-' + itemName.replace(/\s+/g, '_');
+            const itemElement = document.getElementById(targetId);
+            if (itemElement) {
+                itemElement.style.display = isShow ? 'block' : 'none';
+            }
+            saveWheelState();
+        }
+
+        function executeToggleWheel(type, isShow) {
+            if (!isShow) {
+                wheelGraphic.style.display = 'none';
+                saveWheelState();
+                return;
+            }
+            wheelGraphic.style.display = 'block';
+
+            if (type === 'special') {
+                wheelGraphic.style.backgroundImage = "url('./Nón Đặc Biệt.png')";
+                isSpecialMode = true;
+            } else if (type === 'sub_wheel') {
+                // Cập nhật đường dẫn ảnh nón phụ mới theo thiết kế yêu cầu
+                wheelGraphic.style.backgroundImage = "url('./Nón Phụ.png')";
+                isSpecialMode = true; // Kế thừa toàn bộ cơ cấu và thuộc tính xử lý điểm của vòng đặc biệt
+            } else {
+                wheelGraphic.style.backgroundImage = "url('./Nón.png')";
+                isSpecialMode = false;
+                specialValuePopup.style.display = 'none';
+            }
+            saveWheelState();
+        }
+
+        // BIẾN TOÀN CỤC PHỤ TRÁCH THỰC HIỆN ĐỒNG BỘ MƯỢT MÀ THEO FRAME THỜI GIAN
+        let animationFrameId = null;
+
+        function executeSpin(duration, randomOffset, startTime) {
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+            const offset = (typeof randomOffset !== 'undefined') ? randomOffset : Math.floor(Math.random() * 360);
+            const extraSpins = duration * 360;
+
+            const startRot = currentRotation;
+            const targetRot = currentRotation + extraSpins + offset;
+            currentRotation = targetRot;
+            specialValuePopup.style.display = 'none';
+
+            const startTimestamp = startTime || Date.now();
+            const durationMs = duration * 1000;
+
+            // NÂNG CẤP: Thay easeOutCubic bằng easeOutQuint giúp nón lướt điệu nghệ và mượt mà hơn ở các vòng cuối
+            function easeOutQuint(t) {
+                return 1 - Math.pow(1 - t, 5);
+            }
+
+            function updateProgress() {
+                const now = Date.now();
+                const elapsed = now - startTimestamp;
+
+                if (elapsed >= durationMs) {
+                    wheelGraphic.style.transition = 'none';
+                    wheelGraphic.style.transform = `rotate(${targetRot}deg)`;
+                    saveWheelState();
+                    animationFrameId = null;
+                } else {
+                    if (elapsed < 0) {
+                        wheelGraphic.style.transform = `rotate(${startRot}deg)`;
+                    } else {
+                        const t = elapsed / durationMs;
+                        const progress = easeOutQuint(t);
+                        const currentPos = startRot + (targetRot - startRot) * progress;
+
+                        wheelGraphic.style.transition = 'none';
+                        wheelGraphic.style.transform = `rotate(${currentPos}deg)`;
+                    }
+                    animationFrameId = requestAnimationFrame(updateProgress);
+                }
+            }
+
+            animationFrameId = requestAnimationFrame(updateProgress);
+        }
+
+        function executeResetRotation() {
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            currentRotation = 262.5;
+            wheelGraphic.style.transition = 'transform 0.5s cubic-bezier(0.25, 1, 0.5, 1)';
+            wheelGraphic.style.transform = 'rotate(262.5deg)';
+            specialValuePopup.style.display = 'none';
+            setTimeout(saveWheelState, 600);
+        }
+
+        function executePointerLight(pointerName, state) {
+            const pointerObj = document.getElementById('pointer-' + pointerName);
+            if (!pointerObj) return;
+            if (state === 'on') {
+                if (pointerName === 'red') pointerObj.style.setProperty('--p-color', '#FF0000');
+                if (pointerName === 'yellow') pointerObj.style.setProperty('--p-color', '#FFFF00');
+                if (pointerName === 'blue') pointerObj.style.setProperty('--p-color', '#0000FF');
+            } else {
+                pointerObj.style.setProperty('--p-color', '#FFFFFF');
+            }
+        }
+
+        function getWedgeValueAtYellowPointer() {
+            if (!isSpecialMode || specialWedges.length === 0) return "Chưa xáo giá trị";
+            let remainder = currentRotation % 360;
+            let angleAtTop = (360 - remainder) % 360;
+            let wedgeIndex = Math.floor(angleAtTop / 15);
+            if (wedgeIndex < 0) wedgeIndex = 0;
+            if (wedgeIndex > 23) wedgeIndex = 23;
+            let result = specialWedges[wedgeIndex];
+            return typeof result === 'number' ? result.toLocaleString() + " điểm" : result;
+        }
+
+        function executeShowValue() {
+            if (!isSpecialMode) return;
+            specialValuePopup.innerText = getWedgeValueAtYellowPointer();
+            specialValuePopup.style.display = 'block';
+            saveWheelState();
+        }
+
+        function executeHideValue() {
+            specialValuePopup.style.display = 'none';
+            saveWheelState();
+        }
+
+        function executeFindHighest(startTime) {
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            if (!isSpecialMode || specialWedges.length === 0) return;
+
+            const parseVal = (v) => typeof v === 'string' ? parseInt(v.replace('x', '')) : v;
+            let numericValues = specialWedges.map(parseVal);
+            let maxVal = Math.max(...numericValues);
+            let targetIndex = numericValues.indexOf(maxVal);
+            let targetCenterAngle = (targetIndex * 15) + 7.5;
+            let currentNormalized = currentRotation % 360;
+            let targetAngleDiff = (360 - targetCenterAngle) - currentNormalized;
+            if (targetAngleDiff <= 0) targetAngleDiff += 360;
+
+            const startRot = currentRotation;
+            const targetRot = currentRotation + targetAngleDiff + 1080;
+            currentRotation = targetRot;
+
+            specialValuePopup.style.display = 'none';
+
+            const startTimestamp = startTime || Date.now();
+            const durationMs = 4000;
+
+            function easeOutQuint(t) {
+                return 1 - Math.pow(1 - t, 5);
+            }
+
+            function updateFindHighestProgress() {
+                const now = Date.now();
+                const elapsed = now - startTimestamp;
+
+                if (elapsed >= durationMs) {
+                    wheelGraphic.style.transition = 'none';
+                    wheelGraphic.style.transform = `rotate(${targetRot}deg)`;
+
+                    let realValue = specialWedges[targetIndex];
+                    specialValuePopup.innerText = typeof realValue === 'number' ? realValue.toLocaleString() + " điểm" : realValue;
+                    specialValuePopup.style.display = 'block';
+
+                    saveWheelState();
+                    animationFrameId = null;
+                } else {
+                    if (elapsed < 0) {
+                        wheelGraphic.style.transform = `rotate(${startRot}deg)`;
+                    } else {
+                        const t = elapsed / durationMs;
+                        const progress = easeOutQuint(t);
+                        const currentPos = startRot + (targetRot - startRot) * progress;
+
+                        wheelGraphic.style.transition = 'none';
+                        wheelGraphic.style.transform = `rotate(${currentPos}deg)`;
+                    }
+                    animationFrameId = requestAnimationFrame(updateFindHighestProgress);
+                }
+            }
+
+            animationFrameId = requestAnimationFrame(updateFindHighestProgress);
+        }
+
+        function executeUpdateScores(scores) {
+            document.getElementById('display-red-round').innerText = scores.redRound.toLocaleString();
+            document.getElementById('display-red-total').innerText = scores.redTotal.toLocaleString();
+            document.getElementById('display-yellow-round').innerText = scores.yellowRound.toLocaleString();
+            document.getElementById('display-yellow-total').innerText = scores.yellowTotal.toLocaleString();
+            document.getElementById('display-blue-round').innerText = scores.blueRound.toLocaleString();
+            document.getElementById('display-blue-total').innerText = scores.blueTotal.toLocaleString();
+        }
+
+        function executeUpdatePlayerCard(color, cardIdx, isActive) {
+            const container = document.getElementById('row-' + color);
+            if (!container) return;
+            const slot = container.querySelector(`.card-slot[data-card="${cardIdx}"]`);
+            if (slot) {
+                if (isActive) slot.classList.add('active');
+                else slot.classList.remove('active');
+            }
+        }
+
+        loadWheelState();
+
+        try {
+            const channel = supabase.channel('wheel_room');
+            channel.on('broadcast', { event: 'toggle_wheel' }, function (payload) {
+                executeToggleWheel(payload.payload.type, payload.payload.isShow);
+            }).on('broadcast', { event: 'spin_wheel' }, function (payload) {
+                executeSpin(payload.payload.duration, payload.payload.randomOffset, payload.payload.startTime);
+            }).on('broadcast', { event: 'pointer_light' }, function (payload) {
+                executePointerLight(payload.payload.pointerName, payload.payload.state);
+            }).on('broadcast', { event: 'zoom_pointer' }, function (payload) {
+                if (payload.payload.type === 'in') wheelArea.classList.add('zoomed');
+                else wheelArea.classList.remove('zoomed');
+                saveWheelState();
+            }).on('broadcast', { event: 'toggle_item' }, function (payload) {
+                executeToggleItem(payload.payload.itemName, payload.payload.isShow);
+            }).on('broadcast', { event: 'shuffle_special' }, function (payload) {
+                specialWedges = payload.payload.wedges;
+                specialValuePopup.style.display = 'none';
+                saveWheelState();
+            }).on('broadcast', { event: 'show_value' }, function () {
+                executeShowValue();
+            }).on('broadcast', { event: 'hide_value' }, function () {
+                executeHideValue();
+            }).on('broadcast', { event: 'find_highest' }, function () {
+                executeFindHighest(payload.payload.startTime);
+            }).on('broadcast', { event: 'sync_scores' }, function (payload) {
+                executeUpdateScores(payload.payload);
+            }).on('broadcast', { event: 'toggle_player_card' }, function (payload) {
+                executeUpdatePlayerCard(payload.payload.color, payload.payload.cardIdx, payload.payload.isActive);
+            }).on('broadcast', { event: 'reset_rotation' }, function () {
+                executeResetRotation();
+            }).subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    channel.send({ event: 'request_sync', type: 'broadcast', payload: {} });
+                }
+            });
+
+            channel.on('broadcast', { event: 'request_sync' }, function () {
+                const saved = localStorage.getItem('wheel_last_state');
+                if (saved) {
+                    const state = JSON.parse(saved);
+                    channel.send({
+                        event: 'spin_wheel_sync',
+                        type: 'broadcast',
+                        payload: { rotation: state.currentRotation, isSpecialMode: state.isSpecialMode, wedges: state.specialWedges }
+                    });
+                }
+            }).on('broadcast', { event: 'spin_wheel_sync' }, function (payload) {
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                currentRotation = payload.payload.rotation;
+                isSpecialMode = payload.payload.isSpecialMode;
+                specialWedges = payload.payload.wedges;
+                wheelGraphic.style.transition = 'none';
+                wheelGraphic.style.transform = 'rotate(' + currentRotation + 'deg)';
+                saveWheelState();
+            });
+
+        } catch (e) { }
+
+        window.addEventListener('storage', function (e) {
+            if (e.key === 'local_wheel_cmd') {
+                const data = JSON.parse(e.newValue);
+                if (data.event === 'toggle_item') executeToggleItem(data.itemName, data.isShow);
+                if (data.event === 'toggle_wheel') executeToggleWheel(data.type, data.isShow);
+                if (data.event === 'spin_wheel') executeSpin(data.duration, data.randomOffset, data.startTime);
+                if (data.event === 'pointer_light') executePointerLight(data.pointerName, data.state);
+                if (data.event === 'zoom_pointer') {
+                    if (data.type === 'in') wheelArea.classList.add('zoomed');
+                    else wheelArea.classList.remove('zoomed');
+                    saveWheelState();
+                }
+                if (data.event === 'shuffle_special') {
+                    specialWedges = data.wedges;
+                    specialValuePopup.style.display = 'none';
+                    saveWheelState();
+                }
+                if (data.event === 'show_value') executeShowValue();
+                if (data.event === 'hide_value') executeHideValue();
+                if (data.event === 'find_highest') executeFindHighest(data.startTime);
+                if (data.event === 'sync_scores') executeUpdateScores(data);
+                if (data.event === 'toggle_player_card') executeUpdatePlayerCard(data.color, data.cardIdx, data.isActive);
+                if (data.event === 'reset_rotation') executeResetRotation();
+            }
+        });
+
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('keydown', e => {
+            if (e.keyCode === 123) e.preventDefault();
+            if ((e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74)) || (e.ctrlKey && e.keyCode === 85)) {
+                e.preventDefault();
+            }
+        });
+    </script>
+</body>
+
+</html>
