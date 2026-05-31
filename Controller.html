@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="vi">
- 
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -166,7 +166,8 @@
             <button class="btn-off" onclick="toggleWheel('normal', false)">Ẩn Nón</button>
             <button onclick="toggleWheel('special', true)">Hiện Nón Đặc Biệt</button>
             <button class="btn-off" onclick="toggleWheel('special', false)">Ẩn Nón Đặc Biệt</button>
-            <button onclick="toggleWheel('sub_wheel', true)" style="background-color: #800080; color: white;">Hiện Nón Phụ</button>
+            <button onclick="toggleWheel('sub_wheel', true)" style="background-color: #800080; color: white;">Hiện Nón
+                Phụ</button>
             <button class="btn-off" onclick="toggleWheel('sub_wheel', false)">Ẩn Nón Phụ</button>
             <button onclick="resetWheelRotation()" style="background-color: #800080; color: white;">Reset Góc
                 Quay</button>
@@ -310,6 +311,7 @@
         var supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZqd3diemp6Y2J0a2tzZWh3ZmxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NDIyOTYsImV4cCI6MjA5NTUxODI5Nn0.Zcn4hvlLtRirM-SPGrFvu3ivu8RYF9WngvbxCMCGfh4';
         var supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
+        let highestSearchCounter = 0;
         const channel = supabase.channel('wheel_room', {
             config: { broadcast: { self: true } }
         });
@@ -418,7 +420,7 @@
         function shuffleSpecialWheel() {
             const prizeRadio = document.querySelector('input[name="specialPrize"]:checked').value;
             const topPrize = parseInt(prizeRadio);
-            
+
             let wedges = [
                 ...Array(5).fill(15000), ...Array(4).fill(20000), ...Array(4).fill(25000),
                 ...Array(3).fill(30000), ...Array(3).fill(35000), ...Array(2).fill(40000), ...Array(2).fill(45000), topPrize
@@ -467,12 +469,13 @@
         function hideValue() { sendEvent('hide_value', {}); }
         function findHighestWedge() {
             const startTime = Date.now();
-            sendEvent('find_highest', { startTime });
+            sendEvent('find_highest', { startTime, highestSearchCounter: highestSearchCounter });
+            highestSearchCounter++;
         }
 
         const itemsList = [
             "Thẻ Phần thưởng 1", "Thẻ Phần thưởng 2", "Thẻ Phần thưởng 3", "Thẻ Phần thưởng 4", "Thẻ Bí Mật 1", "Thẻ Bí Mật 2", "Thẻ Kháng Mất điểm", "Thẻ Bảo vệ", "Thẻ Thêm lượt",
-            "Thẻ Cơ Hội", "Ô 2.000", "Ô 2.500 1", "Ô 2.500 2", "Ô 2.500 3", "Ô 2.500 4", "Ô 100.000","Ô Mất điểm"
+            "Thẻ Cơ Hội", "Ô 2.000", "Ô 2.500 1", "Ô 2.500 2", "Ô 2.500 3", "Ô 2.500 4", "Ô 100.000", "Ô Mất điểm"
         ];
         const container = document.getElementById('itemsContainer');
         itemsList.forEach(function (item) {

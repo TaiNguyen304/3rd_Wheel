@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="vi">
- 
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -622,14 +622,25 @@
             saveWheelState();
         }
 
-        function executeFindHighest(startTime) {
+        function executeFindHighest(startTime, counter) {
             if (animationFrameId) cancelAnimationFrame(animationFrameId);
             if (!isSpecialMode || specialWedges.length === 0) return;
 
             const parseVal = (v) => typeof v === 'string' ? parseInt(v.replace('x', '')) : v;
             let numericValues = specialWedges.map(parseVal);
             let maxVal = Math.max(...numericValues);
-            let targetIndex = numericValues.indexOf(maxVal);
+
+            // Tìm tất cả các vị trí có giá trị cao nhất
+            let targetIndices = [];
+            numericValues.forEach((val, index) => {
+                if (val === maxVal) targetIndices.push(index);
+            });
+
+            if (targetIndices.length === 0) return;
+
+            // DÙNG BIẾN ĐẾM ĐỒNG BỘ TỪ CONTROLLER TRUYỀN SANG
+            let targetIndex = targetIndices[(counter || 0) % targetIndices.length];
+
             let targetCenterAngle = (targetIndex * 15) + 7.5;
             let currentNormalized = currentRotation % 360;
             let targetAngleDiff = (360 - targetCenterAngle) - currentNormalized;
@@ -717,6 +728,7 @@
                 executeToggleItem(payload.payload.itemName, payload.payload.isShow);
             }).on('broadcast', { event: 'shuffle_special' }, function (payload) {
                 specialWedges = payload.payload.wedges;
+                highestSearchCounter = 0;
                 specialValuePopup.style.display = 'none';
                 saveWheelState();
             }).on('broadcast', { event: 'show_value' }, function () {
@@ -724,7 +736,7 @@
             }).on('broadcast', { event: 'hide_value' }, function () {
                 executeHideValue();
             }).on('broadcast', { event: 'find_highest' }, function () {
-                executeFindHighest(payload.payload.startTime);
+                executeFindHighest(payload.payload.startTime, payload.payload.highestSearchCounter);
             }).on('broadcast', { event: 'sync_scores' }, function (payload) {
                 executeUpdateScores(payload.payload);
             }).on('broadcast', { event: 'toggle_player_card' }, function (payload) {
@@ -773,12 +785,13 @@
                 }
                 if (data.event === 'shuffle_special') {
                     specialWedges = data.wedges;
+                    highestSearchCounter = 0;
                     specialValuePopup.style.display = 'none';
                     saveWheelState();
                 }
                 if (data.event === 'show_value') executeShowValue();
                 if (data.event === 'hide_value') executeHideValue();
-                if (data.event === 'find_highest') executeFindHighest(data.startTime);
+                if (data.event === 'find_highest') executeFindHighest(data.startTime, data.highestSearchCounter);
                 if (data.event === 'sync_scores') executeUpdateScores(data);
                 if (data.event === 'toggle_player_card') executeUpdatePlayerCard(data.color, data.cardIdx, data.isActive);
                 if (data.event === 'reset_rotation') executeResetRotation();
