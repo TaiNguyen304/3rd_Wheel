@@ -292,10 +292,19 @@
             color: white !important;
             border-color: #000000;
         }
+
+        button:hover {
+            background: orange !important;
+            color: #000000 !important;
+        }
     </style>
 </head>
 
 <body>
+    <div id="roomBadge" style="position: fixed; top: 12px; left: 12px; z-index: 9999; background: rgba(0,0,0,0.8); color: #ffffff; padding: 6px 14px; border-radius: 20px; font-family: sans-serif; font-size: 14px; font-weight: bold; border: 1px solid rgba(255,255,255,0.4); display: flex; align-items: center; gap: 8px; backdrop-filter: blur(4px);">
+        <span>Phòng: <strong id="roomBadgeId" style="color: #00ffff; letter-spacing: 1px;">123456</strong></span>
+        <button onclick="changeRoomPrompt()" style="background: #0000ff; color: #fff; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">Đổi</button>
+    </div>
 
     <div class="wheel-area" id="wheelArea">
         <div class="wheel-container" id="wheelContainer">
@@ -397,6 +406,28 @@
         var supabaseUrl = 'https://vjwwbzjzcbtkksehwfll.supabase.co';
         var supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZqd3diemp6Y2J0a2tzZWh3ZmxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NDIyOTYsImV4cCI6MjA5NTUxODI5Nn0.Zcn4hvlLtRirM-SPGrFvu3ivu8RYF9WngvbxCMCGfh4';
         var supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        const urlParams = new URLSearchParams(window.location.search);
+        let roomParam = urlParams.get('roomid');
+        if (!roomParam || !/^\d{6}$/.test(roomParam)) {
+            roomParam = localStorage.getItem('wheel_last_roomid') || '123456';
+        }
+        let currentRoomId = roomParam;
+        localStorage.setItem('wheel_last_roomid', currentRoomId);
+
+        function changeRoomPrompt() {
+            const newRoom = prompt("Nhập mã phòng 6 chữ số:", currentRoomId);
+            if (newRoom && /^\d{6}$/.test(newRoom.trim())) {
+                window.location.search = '?roomid=' + newRoom.trim();
+            } else if (newRoom !== null) {
+                alert("Mã phòng phải là dãy 6 chữ số!");
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const el = document.getElementById('roomBadgeId');
+            if (el) el.textContent = currentRoomId;
+        });
 
         let currentRotation = 262.5;
         let isSpecialMode = false;
@@ -541,11 +572,11 @@
                     };
                 }
             });
-            localStorage.setItem('wheel_last_state', JSON.stringify(state));
+            localStorage.setItem('wheel_last_state_' + currentRoomId, JSON.stringify(state));
         }
 
         function loadWheelState() {
-            const saved = localStorage.getItem('wheel_last_state');
+            const saved = localStorage.getItem('wheel_last_state_' + currentRoomId);
             if (!saved) return;
             try {
                 const state = JSON.parse(saved);
@@ -937,9 +968,11 @@
         loadWheelState();
 
         let syncReceived = false;
+        let channel = null;
 
         function handleWheelCommand(data) {
             if (!data || !data.event) return;
+            if (data.roomid && data.roomid !== currentRoomId) return;
             if (data._serverTime) {
                 updateClockFromMessage(data._serverTime);
             }
@@ -1044,7 +1077,7 @@
 
         try {
             if (supabase) {
-                const channel = supabase.channel('wheel_room', {
+                channel = supabase.channel('wheel_room_' + currentRoomId, {
                     config: { broadcast: { self: false } }
                 });
 
@@ -1079,7 +1112,7 @@
                     channel.send({
                         type: 'broadcast',
                         event: 'request_sync',
-                        payload: {}
+                        payload: { roomid: currentRoomId }
                     }).catch(e => console.warn(e));
                     syncRetries++;
                     if (syncRetries < 4 && !syncReceived) {
@@ -1101,6 +1134,7 @@
                             type: 'broadcast',
                             event: 'report_rotation',
                             payload: {
+                                roomid: currentRoomId,
                                 currentRotation: currentRotation,
                                 itemsState: currentItems
                             }
@@ -1114,12 +1148,12 @@
 
         // BroadcastChannel listener
         if (typeof BroadcastChannel !== 'undefined') {
-            const bc = new BroadcastChannel('wheel_channel');
+            const bc = new BroadcastChannel('wheel_channel_' + currentRoomId);
             bc.onmessage = function (e) {
                 handleWheelCommand(e.data);
             };
             try {
-                bc.postMessage({ type: 'broadcast', event: 'request_sync' });
+                bc.postMessage({ type: 'broadcast', roomid: currentRoomId, event: 'request_sync' });
             } catch (err) { }
         }
 
@@ -1131,7 +1165,7 @@
         });
 
         window.addEventListener('storage', function (e) {
-            if (e.key === 'local_wheel_cmd' && e.newValue) {
+            if ((e.key === ('local_wheel_cmd_' + currentRoomId) || e.key === 'local_wheel_cmd') && e.newValue) {
                 try {
                     const data = JSON.parse(e.newValue);
                     handleWheelCommand(data);

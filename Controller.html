@@ -64,16 +64,17 @@
 
         button:hover {
             background: orange !important;
-            color: #fff !important;
+            color: #000000 !important;
         }
 
         button.btn-off {
             background: #ff00ff;
+            color: #000000 !important;
         }
 
         button.btn-off:hover {
             background: orange !important;
-            color: #fff !important;
+            color: #000000 !important;
         }
 
         input[type="number"],
@@ -166,6 +167,23 @@
 
 <body>
 
+    <div class="section" id="roomManagementSection" style="border: 2px solid #0000ff; background: #fafbff;">
+        <h2 style="margin-top: 0; color: #0000ff; font-size: 20px;">Quản Lý Phòng Chơi (Room ID)</h2>
+        <div class="flex-row" style="gap: 15px; align-items: center; margin-bottom: 12px;">
+            <span style="font-size: 15px;">Mã phòng hiện tại:</span>
+            <span id="currentRoomDisplay" style="font-size: 26px; font-weight: bold; color: #0000ff; letter-spacing: 3px; background: #ffffff; padding: 4px 14px; border-radius: 6px; border: 2px solid #0000ff;">123456</span>
+            <button onclick="createNewRoom()" style="background: #008000; color: #ffffff;">Tạo phòng mới</button>
+            <button onclick="copyRoomLink()" style="background: #800080; color: #ffffff;">Sao chép Link Nón</button>
+        </div>
+        <div class="flex-row" style="gap: 10px; align-items: center;">
+            <span style="font-size: 15px;">Chuyển phòng:</span>
+            <input type="text" id="roomInput" placeholder="6 chữ số" maxlength="6" style="width: 140px; font-size: 16px; text-align: center; letter-spacing: 2px; font-weight: bold;" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+            <button onclick="joinRoomFromInput()" style="background: #0000ff; color: #ffffff;">Đổi sang phòng này</button>
+            <button onclick="openWheelTab()" style="background: #ff0000; color: #ffffff;">Mở Nón Chính</button>
+            <button onclick="openSubWheelTab()" style="background: #ff00ff; color: #000000;">Mở Nón Phụ</button>
+        </div>
+    </div>
+
     <div class="section">
         <h2>Điều khiển Nón</h2>
         <div class="flex-row">
@@ -235,7 +253,7 @@
             <div class="pointer-control" style="background-color: purple; color: #fff;">
                 <span>Zoom Kim:</span>
                 <button onclick="zoomPointer('in')" style="background: green; color: white;">Ease in</button>
-                <button onclick="zoomPointer('out')" style="background: #ff00ff; color: white;">Ease out</button>
+                <button onclick="zoomPointer('out')" style="background: #ff00ff; color: #000000;">Ease out</button>
             </div>
         </div>
     </div>
@@ -309,7 +327,7 @@
             <button onclick="resetAllScores('round')"
                 style="background: purple; font-size: 16px; padding: 12px 25px;">Reset điểm vòng</button>
             <button onclick="resetAllScores('total')"
-                style="background: #ff00ff; font-size: 16px; padding: 12px 25px;">Reset điểm tổng</button>
+                style="background: #ff00ff; color: #000000; font-size: 16px; padding: 12px 25px;">Reset điểm tổng</button>
         </div>
     </div>
 
@@ -320,8 +338,21 @@
 
         let highestSearchCounter = 0;
         let channel = null;
+        let localBroadcastChannel = null;
         let isSubscribed = false;
         let pendingMessages = [];
+
+        // QUẢN LÝ MÃ PHÒNG (ROOM ID)
+        function getInitialRoomId() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const r = urlParams.get('roomid');
+            if (r && /^\d{6}$/.test(r)) return r;
+            const saved = localStorage.getItem('controller_current_roomid');
+            if (saved && /^\d{6}$/.test(saved)) return saved;
+            return '123456';
+        }
+
+        let currentRoomId = getInitialRoomId();
 
         let currentRotation = 262.5;
         let currentWheelType = 'normal';
@@ -334,7 +365,7 @@
 
         function saveControllerState() {
             try {
-                localStorage.setItem('controller_saved_state', JSON.stringify({
+                localStorage.setItem('controller_saved_state_' + currentRoomId, JSON.stringify({
                     currentRotation,
                     currentWheelType,
                     currentWheelVisible,
@@ -345,12 +376,23 @@
                     currentSpinState,
                     currentItemsState
                 }));
+                localStorage.setItem('controller_current_roomid', currentRoomId);
             } catch (e) { }
         }
 
         function loadControllerState() {
             try {
-                const saved = localStorage.getItem('controller_saved_state');
+                currentRotation = 262.5;
+                currentWheelType = 'normal';
+                currentWheelVisible = true;
+                currentSpecialWedges = [];
+                currentPointers = { red: 'off', yellow: 'off', blue: 'off', zoom: 'out' };
+                currentSpinState = null;
+                currentItemsState = {};
+                globalScores = { redRound: 0, redTotal: 0, yellowRound: 0, yellowTotal: 0, blueRound: 0, blueTotal: 0 };
+                playerCardsState = { red: [false, false, false, false], yellow: [false, false, false, false], blue: [false, false, false, false] };
+
+                const saved = localStorage.getItem('controller_saved_state_' + currentRoomId);
                 if (!saved) return;
                 const data = JSON.parse(saved);
                 if (typeof data.currentRotation === 'number') currentRotation = data.currentRotation;
@@ -358,34 +400,13 @@
                 if (typeof data.currentWheelVisible === 'boolean') currentWheelVisible = data.currentWheelVisible;
                 if (data.currentSpecialWedges && data.currentSpecialWedges.length) {
                     currentSpecialWedges = data.currentSpecialWedges;
-                    renderGrid(currentSpecialWedges);
-                    if (typeof renderSubGrid === 'function') renderSubGrid(currentSpecialWedges);
                 }
                 if (data.currentPointers) currentPointers = data.currentPointers;
-                if (data.globalScores) {
-                    globalScores = data.globalScores;
-                    syncScoresToWheel();
-                }
+                if (data.globalScores) globalScores = data.globalScores;
                 if (data.currentItemsState && typeof data.currentItemsState === 'object') {
-                    currentItemsState = { ...currentItemsState, ...data.currentItemsState };
-                    Object.keys(currentItemsState).forEach(item => {
-                        updateItemCardUI(item, currentItemsState[item]);
-                    });
+                    currentItemsState = { ...data.currentItemsState };
                 }
-                if (data.playerCardsState) {
-                    playerCardsState = data.playerCardsState;
-                    ['red', 'yellow', 'blue'].forEach(c => {
-                        if (Array.isArray(playerCardsState[c])) {
-                            playerCardsState[c].forEach((st, idx) => {
-                                const btn = document.getElementById(`btn-card-${c}-${idx}`);
-                                if (btn) {
-                                    if (st) btn.classList.add('active-status');
-                                    else btn.classList.remove('active-status');
-                                }
-                            });
-                        }
-                    });
-                }
+                if (data.playerCardsState) playerCardsState = data.playerCardsState;
                 if (data.currentSpinState && data.currentSpinState.startTime) {
                     const elapsed = Date.now() - data.currentSpinState.startTime;
                     if (elapsed < data.currentSpinState.duration * 1000) {
@@ -395,66 +416,59 @@
             } catch (e) { }
         }
 
-        const localBroadcastChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('wheel_channel') : null;
-
-        if (localBroadcastChannel) {
-            localBroadcastChannel.onmessage = function (e) {
-                const data = e.data;
-                if (!data) return;
-                const clientTime = data.clientTimestamp || data.clientSendTime;
-                if (data.event === 'time_ping' && clientTime) {
-                    const now = Date.now();
-                    sendEvent('time_pong', {
-                        clientTimestamp: clientTime,
-                        clientSendTime: clientTime,
-                        serverTimestamp: now,
-                        serverTime: now
-                    });
-                }
-                if (data.event === 'request_sync') {
-                    sendFullState();
-                }
-                if (data.event === 'report_rotation' && typeof data.currentRotation === 'number') {
-                    if (!currentSpinState) {
-                        currentRotation = data.currentRotation;
-                        saveControllerState();
-                    }
-                    if (data.itemsState && typeof data.itemsState === 'object') {
-                        let hasChange = false;
-                        Object.keys(data.itemsState).forEach(item => {
-                            if (currentItemsState[item] === undefined || currentItemsState[item] === false) {
-                                const val = data.itemsState[item];
-                                const isShow = (val === true || val === 'block' || (val && (val.show || val.display === 'block')));
-                                if (isShow) {
-                                    currentItemsState[item] = true;
-                                    updateItemCardUI(item, true);
-                                    hasChange = true;
-                                }
-                            }
-                        });
-                        if (hasChange) saveControllerState();
-                    }
-                }
-            };
+        function updateRoomUI() {
+            const display = document.getElementById('currentRoomDisplay');
+            if (display) display.textContent = currentRoomId;
+            const input = document.getElementById('roomInput');
+            if (input) input.value = currentRoomId;
+            if (window.history && window.history.replaceState) {
+                const newUrl = window.location.pathname + '?roomid=' + currentRoomId;
+                window.history.replaceState(null, '', newUrl);
+            }
         }
 
-        function initSupabaseChannel() {
-            if (!supabase) return;
-            try {
-                channel = supabase.channel('wheel_room', {
-                    config: { broadcast: { self: true } }
+        function refreshAllUI() {
+            syncScoresToWheel();
+            if (typeof itemsList !== 'undefined') {
+                itemsList.forEach(item => {
+                    updateItemCardUI(item, !!currentItemsState[item]);
                 });
+            }
+            ['red', 'yellow', 'blue'].forEach(c => {
+                if (playerCardsState && Array.isArray(playerCardsState[c])) {
+                    playerCardsState[c].forEach((st, idx) => {
+                        const btn = document.getElementById(`btn-card-${c}-${idx}`);
+                        if (btn) {
+                            if (st) btn.classList.add('active-status');
+                            else btn.classList.remove('active-status');
+                        }
+                    });
+                }
+            });
+            if (currentSpecialWedges && currentSpecialWedges.length) {
+                if (typeof renderGrid === 'function') renderGrid(currentSpecialWedges);
+                if (typeof renderSubGrid === 'function') renderSubGrid(currentSpecialWedges);
+            } else {
+                const grid = document.getElementById('specialGridContainer');
+                if (grid) grid.innerHTML = '';
+                const subGrid = document.getElementById('subGridContainer');
+                if (subGrid) subGrid.innerHTML = '';
+            }
+        }
 
-                // When a new wheel or screen requests synchronization:
-                channel.on('broadcast', { event: 'request_sync' }, function () {
-                    sendFullState();
-                });
-
-                // High-precision SNTP time synchronization
-                channel.on('broadcast', { event: 'time_ping' }, function (msg) {
-                    const payload = msg && msg.payload ? msg.payload : msg;
-                    const clientTime = payload ? (payload.clientTimestamp || payload.clientSendTime) : null;
-                    if (clientTime) {
+        function initChannels() {
+            if (localBroadcastChannel) {
+                try { localBroadcastChannel.close(); } catch (e) {}
+                localBroadcastChannel = null;
+            }
+            if (typeof BroadcastChannel !== 'undefined') {
+                localBroadcastChannel = new BroadcastChannel('wheel_channel_' + currentRoomId);
+                localBroadcastChannel.onmessage = function (e) {
+                    const data = e.data;
+                    if (!data) return;
+                    if (data.roomid && data.roomid !== currentRoomId) return;
+                    const clientTime = data.clientTimestamp || data.clientSendTime;
+                    if (data.event === 'time_ping' && clientTime) {
                         const now = Date.now();
                         sendEvent('time_pong', {
                             clientTimestamp: clientTime,
@@ -463,51 +477,155 @@
                             serverTime: now
                         });
                     }
-                });
-
-                channel.on('broadcast', { event: 'report_rotation' }, function (msg) {
-                    const payload = msg && msg.payload ? msg.payload : msg;
-                    if (payload && typeof payload.currentRotation === 'number' && !currentSpinState) {
-                        currentRotation = payload.currentRotation;
-                        saveControllerState();
-                    }
-                    if (payload && payload.itemsState && typeof payload.itemsState === 'object') {
-                        let hasChange = false;
-                        Object.keys(payload.itemsState).forEach(item => {
-                            if (currentItemsState[item] === undefined || currentItemsState[item] === false) {
-                                const val = payload.itemsState[item];
-                                const isShow = (val === true || val === 'block' || (val && (val.show || val.display === 'block')));
-                                if (isShow) {
-                                    currentItemsState[item] = true;
-                                    updateItemCardUI(item, true);
-                                    hasChange = true;
-                                }
-                            }
-                        });
-                        if (hasChange) saveControllerState();
-                    }
-                });
-
-                channel.subscribe(function (status) {
-                    if (status === 'SUBSCRIBED') {
-                        isSubscribed = true;
-                        while (pendingMessages.length > 0) {
-                            const msg = pendingMessages.shift();
-                            channel.send(msg).catch(e => console.warn(e));
-                        }
+                    if (data.event === 'request_sync') {
                         sendFullState();
-                    } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-                        isSubscribed = false;
                     }
-                });
-            } catch (e) {
-                console.warn('Supabase realtime error:', e);
+                    if (data.event === 'report_rotation' && typeof data.currentRotation === 'number') {
+                        if (!currentSpinState) {
+                            currentRotation = data.currentRotation;
+                            saveControllerState();
+                        }
+                        if (data.itemsState && typeof data.itemsState === 'object') {
+                            let hasChange = false;
+                            Object.keys(data.itemsState).forEach(item => {
+                                if (currentItemsState[item] === undefined || currentItemsState[item] === false) {
+                                    const val = data.itemsState[item];
+                                    const isShow = (val === true || val === 'block' || (val && (val.show || val.display === 'block')));
+                                    if (isShow) {
+                                        currentItemsState[item] = true;
+                                        updateItemCardUI(item, true);
+                                        hasChange = true;
+                                    }
+                                }
+                            });
+                            if (hasChange) saveControllerState();
+                        }
+                    }
+                };
+            }
+
+            if (channel && supabase) {
+                try { supabase.removeChannel(channel); } catch (e) {}
+                channel = null;
+            }
+
+            if (supabase) {
+                try {
+                    channel = supabase.channel('wheel_room_' + currentRoomId, {
+                        config: { broadcast: { self: true } }
+                    });
+
+                    channel.on('broadcast', { event: 'request_sync' }, function () {
+                        sendFullState();
+                    });
+
+                    channel.on('broadcast', { event: 'time_ping' }, function (msg) {
+                        const payload = msg && msg.payload ? msg.payload : msg;
+                        const clientTime = payload ? (payload.clientTimestamp || payload.clientSendTime) : null;
+                        if (clientTime) {
+                            const now = Date.now();
+                            sendEvent('time_pong', {
+                                clientTimestamp: clientTime,
+                                clientSendTime: clientTime,
+                                serverTimestamp: now,
+                                serverTime: now
+                            });
+                        }
+                    });
+
+                    channel.on('broadcast', { event: 'report_rotation' }, function (msg) {
+                        const payload = msg && msg.payload ? msg.payload : msg;
+                        if (!payload) return;
+                        if (payload.roomid && payload.roomid !== currentRoomId) return;
+                        if (typeof payload.currentRotation === 'number' && !currentSpinState) {
+                            currentRotation = payload.currentRotation;
+                            saveControllerState();
+                        }
+                        if (payload.itemsState && typeof payload.itemsState === 'object') {
+                            let hasChange = false;
+                            Object.keys(payload.itemsState).forEach(item => {
+                                if (currentItemsState[item] === undefined || currentItemsState[item] === false) {
+                                    const val = payload.itemsState[item];
+                                    const isShow = (val === true || val === 'block' || (val && (val.show || val.display === 'block')));
+                                    if (isShow) {
+                                        currentItemsState[item] = true;
+                                        updateItemCardUI(item, true);
+                                        hasChange = true;
+                                    }
+                                }
+                            });
+                            if (hasChange) saveControllerState();
+                        }
+                    });
+
+                    channel.subscribe(function (status) {
+                        if (status === 'SUBSCRIBED') {
+                            isSubscribed = true;
+                            while (pendingMessages.length > 0) {
+                                const msg = pendingMessages.shift();
+                                channel.send(msg).catch(e => console.warn(e));
+                            }
+                            sendFullState();
+                        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+                            isSubscribed = false;
+                        }
+                    });
+                } catch (e) {
+                    console.warn('Supabase realtime error:', e);
+                }
             }
         }
-        initSupabaseChannel();
+
+        function switchRoom(newRoomId) {
+            if (!newRoomId || !/^\d{6}$/.test(newRoomId)) {
+                alert('Mã phòng phải là 6 chữ số!');
+                return;
+            }
+            if (activeSpinTickInterval) {
+                clearInterval(activeSpinTickInterval);
+                activeSpinTickInterval = null;
+            }
+            saveControllerState();
+            currentRoomId = newRoomId;
+            updateRoomUI();
+            loadControllerState();
+            refreshAllUI();
+            initChannels();
+            sendFullState();
+        }
+
+        function createNewRoom() {
+            const newId = String(Math.floor(100000 + Math.random() * 900000));
+            switchRoom(newId);
+        }
+
+        function joinRoomFromInput() {
+            const inputVal = document.getElementById('roomInput').value.trim();
+            if (/^\d{6}$/.test(inputVal)) {
+                switchRoom(inputVal);
+            } else {
+                alert('Vui lòng nhập đúng 6 chữ số!');
+            }
+        }
+
+        function copyRoomLink() {
+            const wheelUrl = location.origin + location.pathname.replace(/Controller\.html$/i, 'Wheel.html') + '?roomid=' + currentRoomId;
+            navigator.clipboard.writeText(wheelUrl).then(() => {
+                alert('Đã sao chép đường dẫn Nón Chính phòng ' + currentRoomId + ':\n' + wheelUrl);
+            }).catch(() => {
+                prompt('Đường dẫn Nón Chính phòng ' + currentRoomId + ':', wheelUrl);
+            });
+        }
+
+        function openWheelTab() {
+            window.open('Wheel.html?roomid=' + currentRoomId, '_blank');
+        }
+
+        function openSubWheelTab() {
+            window.open('Sub_Wheel.html?roomid=' + currentRoomId, '_blank');
+        }
 
         function sendFullState() {
-            // Check if active spin is still valid
             if (currentSpinState && currentSpinState.startTime) {
                 const elapsed = Date.now() - currentSpinState.startTime;
                 if (elapsed >= currentSpinState.duration * 1000) {
@@ -515,6 +633,7 @@
                 }
             }
             sendEvent('sync_full_state', {
+                roomid: currentRoomId,
                 currentRotation: currentRotation,
                 scores: globalScores,
                 wheelType: currentWheelType,
@@ -531,6 +650,7 @@
         function sendEvent(eventName, payloadData = {}) {
             const now = Date.now();
             const fullPayload = {
+                roomid: currentRoomId,
                 _serverTime: now,
                 ...payloadData
             };
@@ -558,7 +678,7 @@
             }
 
             try {
-                localStorage.setItem('local_wheel_cmd', JSON.stringify({
+                localStorage.setItem('local_wheel_cmd_' + currentRoomId, JSON.stringify({
                     event: eventName,
                     _ts: now,
                     ...fullPayload
@@ -741,11 +861,14 @@
 
                 // Xử lý phân bổ sơ đồ màu sắc theo yêu cầu đề bài
                 if (val === 30000) {
-                    cell.style.backgroundColor = 'purple'; // Ô 50.000 màu tím
+                    cell.style.backgroundColor = 'purple'; // Ô 30.000 màu tím
+                    cell.style.color = 'white';
                 } else if (val === 25000) {
-                    cell.style.backgroundColor = '#ff00ff'; // Ô 45.000 màu ff00ff
+                    cell.style.backgroundColor = '#ff00ff'; // Ô 25.000 màu ff00ff
+                    cell.style.color = '#000000'; // Pink cell has black text
                 } else {
                     cell.style.backgroundColor = 'red'; // Các ô còn lại màu đỏ
+                    cell.style.color = 'white';
                 }
                 container.appendChild(cell);
             });
@@ -932,8 +1055,10 @@
         initPlayerCardControls('red');
         initPlayerCardControls('yellow');
         initPlayerCardControls('blue');
+        updateRoomUI();
         loadControllerState();
-        syncScoresToWheel();
+        refreshAllUI();
+        initChannels();
 
         function resetWheelRotation() {
             currentRotation = 262.5;
