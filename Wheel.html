@@ -398,7 +398,7 @@
         var supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZqd3diemp6Y2J0a2tzZWh3ZmxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NDIyOTYsImV4cCI6MjA5NTUxODI5Nn0.Zcn4hvlLtRirM-SPGrFvu3ivu8RYF9WngvbxCMCGfh4';
         var supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-        let currentRotation = 0;
+        let currentRotation = 262.5;
         let isSpecialMode = false;
         let specialWedges = [];
         let currentPointers = { red: 'off', yellow: 'off', blue: 'off', zoom: 'out' };
@@ -409,6 +409,55 @@
             blue: Array(11).fill(false)
         };
         let currentSpinState = null;
+
+        // --- HỆ THỐNG ĐỒNG BỘ THỜI GIAN CHUẨN SNTP ĐA THIẾT BỊ ---
+        let clockOffset = 0;
+        let hasSyncedClock = false;
+        let clockSamples = [];
+
+        function getSyncedServerTime() {
+            return Date.now() + clockOffset;
+        }
+
+        function updateClockFromMessage(serverTime) {
+            if (!serverTime || typeof serverTime !== 'number') return;
+            if (!hasSyncedClock) {
+                clockOffset = serverTime - Date.now();
+            }
+        }
+
+        function handleTimePong(payload) {
+            if (!payload || !payload.clientSendTime || !payload.serverTime) return;
+            const now = Date.now();
+            const rtt = now - payload.clientSendTime;
+            if (rtt < 0 || rtt > 5000) return;
+            const estimatedServerTime = payload.serverTime + (rtt / 2);
+            const measuredOffset = estimatedServerTime - now;
+            clockSamples.push(measuredOffset);
+            if (clockSamples.length > 5) clockSamples.shift();
+            const sorted = [...clockSamples].sort((a, b) => a - b);
+            clockOffset = sorted[Math.floor(sorted.length / 2)];
+            hasSyncedClock = true;
+        }
+
+        function sendTimePing() {
+            const now = Date.now();
+            if (channel) {
+                channel.send({
+                    type: 'broadcast',
+                    event: 'time_ping',
+                    payload: { clientSendTime: now }
+                }).catch(() => {});
+            }
+            if (typeof localBroadcastChannel !== 'undefined' && localBroadcastChannel) {
+                try {
+                    localBroadcastChannel.postMessage({
+                        event: 'time_ping',
+                        clientSendTime: now
+                    });
+                } catch (e) {}
+            }
+        }
 
         const wheelGraphic = document.getElementById('wheelGraphic');
         const wheelArea = document.getElementById('wheelArea');
@@ -484,7 +533,13 @@
             Object.keys(itemsPlacementConfig).forEach(itemName => {
                 const targetId = 'render-item-' + itemName.replace(/\s+/g, '_');
                 const el = document.getElementById(targetId);
-                if (el) state.itemsState[itemName] = el.style.display;
+                if (el) {
+                    state.itemsState[itemName] = {
+                        display: el.style.display,
+                        show: el.style.display === 'block',
+                        angle: itemsPlacementConfig[itemName] ? itemsPlacementConfig[itemName].angle : 0
+                    };
+                }
             });
             localStorage.setItem('wheel_last_state', JSON.stringify(state));
         }
@@ -513,7 +568,19 @@
                     Object.keys(state.itemsState).forEach(itemName => {
                         const targetId = 'render-item-' + itemName.replace(/\s+/g, '_');
                         const el = document.getElementById(targetId);
-                        if (el) el.style.display = state.itemsState[itemName];
+                        if (el) {
+                            const val = state.itemsState[itemName];
+                            if (typeof val === 'string') {
+                                el.style.display = val;
+                            } else if (typeof val === 'boolean') {
+                                el.style.display = val ? 'block' : 'none';
+                            } else if (val && typeof val === 'object') {
+                                el.style.display = (val.show || val.display === 'block') ? 'block' : 'none';
+                                if (typeof val.angle === 'number') {
+                                    el.style.transform = `rotate(${val.angle}deg)`;
+                                }
+                            }
+                        }
                     });
                 }
 
@@ -540,7 +607,7 @@
                 }
 
                 if (state.activeSpin && state.activeSpin.startTime && state.activeSpin.duration) {
-                    const elapsed = Date.now() - state.activeSpin.startTime;
+                    const elapsed = getSyncedServerTime() - state.activeSpin.startTime;
                     if (elapsed < state.activeSpin.duration * 1000) {
                         executeSpin(
                             state.activeSpin.duration,
@@ -548,10 +615,14 @@
                             state.activeSpin.startTime,
                             state.activeSpin.startRotation,
                             state.activeSpin.targetRotation,
-                            state.activeSpin.spinId
+                            state.activeSpin.spinId,
+                            state.activeSpin.finalRotation
                         );
                     } else if (typeof state.activeSpin.targetRotation === 'number') {
-                        currentRotation = ((state.activeSpin.targetRotation % 360) + 360) % 360;
+                        const finalRot = typeof state.activeSpin.finalRotation === 'number'
+                            ? state.activeSpin.finalRotation
+                            : state.activeSpin.targetRotation;
+                        currentRotation = ((finalRot % 360) + 360) % 360;
                         wheelGraphic.style.transition = 'none';
                         wheelGraphic.style.transform = `rotate(${currentRotation}deg) translateZ(0)`;
                         currentSpinState = null;
@@ -561,12 +632,17 @@
             } catch (e) { console.error(e); }
         }
 
-        function executeToggleItem(itemName, isShow) {
+        function executeToggleItem(itemName, isShow, customAngle) {
             if (itemName === "Ô 5.000") return;
             const targetId = 'render-item-' + itemName.replace(/\s+/g, '_');
             const itemElement = document.getElementById(targetId);
             if (itemElement) {
                 itemElement.style.display = isShow ? 'block' : 'none';
+                if (typeof customAngle === 'number') {
+                    itemElement.style.transform = `rotate(${customAngle}deg)`;
+                } else if (itemsPlacementConfig[itemName] && typeof itemsPlacementConfig[itemName].angle === 'number') {
+                    itemElement.style.transform = `rotate(${itemsPlacementConfig[itemName].angle}deg)`;
+                }
             }
             saveWheelState();
         }
@@ -583,9 +659,8 @@
                 wheelGraphic.style.backgroundImage = "url('./Nón Đặc Biệt.png')";
                 isSpecialMode = true;
             } else if (type === 'sub_wheel') {
-                // Cập nhật đường dẫn ảnh nón phụ mới theo thiết kế yêu cầu
                 wheelGraphic.style.backgroundImage = "url('./Nón Phụ.png')";
-                isSpecialMode = true; // Kế thừa toàn bộ cơ cấu và thuộc tính xử lý điểm của vòng đặc biệt
+                isSpecialMode = true;
             } else {
                 wheelGraphic.style.backgroundImage = "url('./Nón.png')";
                 isSpecialMode = false;
@@ -599,8 +674,10 @@
         let lastProcessedSpinId = null;
         let lastProcessedFindId = null;
 
-        function executeSpin(duration, randomOffset, startTime, startRotation, targetRotation, spinId) {
-            if (spinId && spinId === lastProcessedSpinId) return;
+        function executeSpin(duration, randomOffset, startTime, startRotation, targetRotation, spinId, finalRotation) {
+            if (spinId && spinId === lastProcessedSpinId && currentSpinState && currentSpinState.spinId === spinId) {
+                return;
+            }
             if (spinId) lastProcessedSpinId = spinId;
 
             if (animationFrameId) {
@@ -619,49 +696,43 @@
                 targetRot = startRot + extraSpins + offset;
             }
 
+            const endAngle = (typeof finalRotation === 'number') ? finalRotation : (targetRot % 360);
             specialValuePopup.style.display = 'none';
 
             const durationMs = duration * 1000;
-            const nowTime = Date.now();
-            const elapsedAlready = (startTime && typeof startTime === 'number') ? Math.max(0, nowTime - startTime) : 0;
-
-            if (elapsedAlready >= durationMs) {
-                const finalNormalized = ((targetRot % 360) + 360) % 360;
-                currentRotation = finalNormalized;
-                wheelGraphic.style.transition = 'none';
-                wheelGraphic.style.transform = `rotate(${finalNormalized}deg) translateZ(0)`;
-                currentSpinState = null;
-                saveWheelState();
-                return;
-            }
+            const spinStartServerTime = (typeof startTime === 'number') ? startTime : getSyncedServerTime();
 
             currentSpinState = {
                 duration: duration,
                 randomOffset: randomOffset,
                 startRotation: startRot,
                 targetRotation: targetRot,
+                finalRotation: endAngle,
                 spinId: spinId,
-                startTime: startTime || nowTime
+                startTime: spinStartServerTime
             };
             saveWheelState();
-
-            const localStart = performance.now() - elapsedAlready;
 
             function easeOutQuint(t) {
                 return 1 - Math.pow(1 - t, 5);
             }
 
-            function updateProgress(now) {
-                const elapsed = now - localStart;
+            function updateProgress() {
+                const nowServer = getSyncedServerTime();
+                const elapsed = nowServer - spinStartServerTime;
 
                 if (elapsed >= durationMs) {
-                    const finalNormalized = ((targetRot % 360) + 360) % 360;
+                    const finalNormalized = ((endAngle % 360) + 360) % 360;
                     currentRotation = finalNormalized;
                     wheelGraphic.style.transition = 'none';
                     wheelGraphic.style.transform = `rotate(${finalNormalized}deg) translateZ(0)`;
                     currentSpinState = null;
                     saveWheelState();
                     animationFrameId = null;
+                } else if (elapsed <= 0) {
+                    wheelGraphic.style.transition = 'none';
+                    wheelGraphic.style.transform = `rotate(${startRot}deg) translateZ(0)`;
+                    animationFrameId = requestAnimationFrame(updateProgress);
                 } else {
                     const t = Math.max(0, Math.min(1, elapsed / durationMs));
                     const progress = easeOutQuint(t);
@@ -669,11 +740,46 @@
 
                     wheelGraphic.style.transition = 'none';
                     wheelGraphic.style.transform = `rotate(${currentPos}deg) translateZ(0)`;
+                    currentRotation = ((currentPos % 360) + 360) % 360;
+
                     animationFrameId = requestAnimationFrame(updateProgress);
                 }
             }
 
             animationFrameId = requestAnimationFrame(updateProgress);
+        }
+
+        function handleSpinTick(data) {
+            if (!data || !data.spinId) return;
+            if (data._serverTime) {
+                updateClockFromMessage(data._serverTime);
+            }
+            if (!currentSpinState || currentSpinState.spinId !== data.spinId) {
+                executeSpin(
+                    data.duration,
+                    null,
+                    data.startTime,
+                    data.startRotation,
+                    data.targetRotation,
+                    data.spinId,
+                    data.finalRotation
+                );
+            }
+        }
+
+        function handleSpinEnd(data) {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            currentSpinState = null;
+            const finalNormalized = (typeof data.finalRotation === 'number')
+                ? ((data.finalRotation % 360) + 360) % 360
+                : (typeof data.targetRotation === 'number' ? ((data.targetRotation % 360) + 360) % 360 : currentRotation);
+            currentRotation = finalNormalized;
+            wheelGraphic.style.transition = 'none';
+            wheelGraphic.style.transform = `rotate(${finalNormalized}deg) translateZ(0)`;
+            saveWheelState();
         }
 
         function executeResetRotation() {
@@ -759,15 +865,16 @@
 
             specialValuePopup.style.display = 'none';
 
-            const localStart = performance.now();
             const durationMs = 4000;
+            const findStartServerTime = (typeof startTime === 'number') ? startTime : getSyncedServerTime();
 
             function easeOutQuint(t) {
                 return 1 - Math.pow(1 - t, 5);
             }
 
-            function updateFindHighestProgress(now) {
-                const elapsed = now - localStart;
+            function updateFindHighestProgress() {
+                const nowServer = getSyncedServerTime();
+                const elapsed = nowServer - findStartServerTime;
 
                 if (elapsed >= durationMs) {
                     const finalNormalized = ((targetRot % 360) + 360) % 360;
@@ -781,6 +888,10 @@
 
                     saveWheelState();
                     animationFrameId = null;
+                } else if (elapsed <= 0) {
+                    wheelGraphic.style.transition = 'none';
+                    wheelGraphic.style.transform = `rotate(${startRot}deg) translateZ(0)`;
+                    animationFrameId = requestAnimationFrame(updateFindHighestProgress);
                 } else {
                     const t = Math.max(0, Math.min(1, elapsed / durationMs));
                     const progress = easeOutQuint(t);
@@ -788,6 +899,8 @@
 
                     wheelGraphic.style.transition = 'none';
                     wheelGraphic.style.transform = `rotate(${currentPos}deg) translateZ(0)`;
+                    currentRotation = ((currentPos % 360) + 360) % 360;
+
                     animationFrameId = requestAnimationFrame(updateFindHighestProgress);
                 }
             }
@@ -827,9 +940,15 @@
 
         function handleWheelCommand(data) {
             if (!data || !data.event) return;
-            if (data.event === 'toggle_item') executeToggleItem(data.itemName, data.isShow);
+            if (data._serverTime) {
+                updateClockFromMessage(data._serverTime);
+            }
+            if (data.event === 'time_pong') handleTimePong(data);
+            if (data.event === 'spin_tick') handleSpinTick(data);
+            if (data.event === 'spin_end') handleSpinEnd(data);
+            if (data.event === 'toggle_item') executeToggleItem(data.itemName, data.isShow, data.angle);
             if (data.event === 'toggle_wheel') executeToggleWheel(data.type, data.isShow);
-            if (data.event === 'spin_wheel') executeSpin(data.duration, data.randomOffset, data.startTime, data.startRotation, data.targetRotation, data.spinId);
+            if (data.event === 'spin_wheel') executeSpin(data.duration, data.randomOffset, data.startTime, data.startRotation, data.targetRotation, data.spinId, data.finalRotation);
             if (data.event === 'pointer_light') executePointerLight(data.pointerName, data.state);
             if (data.event === 'zoom_pointer') {
                 if (data.type === 'in') wheelArea.classList.add('zoomed');
@@ -881,8 +1000,24 @@
                     if (data.pointers.zoom === 'in') wheelArea.classList.add('zoomed');
                     else if (data.pointers.zoom === 'out') wheelArea.classList.remove('zoomed');
                 }
+                if (data.itemsState) {
+                    Object.keys(data.itemsState).forEach(itemName => {
+                        const itemVal = data.itemsState[itemName];
+                        let isShow = false;
+                        let customAngle = null;
+                        if (typeof itemVal === 'boolean') {
+                            isShow = itemVal;
+                        } else if (typeof itemVal === 'string') {
+                            isShow = (itemVal === 'block' || itemVal === 'true');
+                        } else if (itemVal && typeof itemVal === 'object') {
+                            isShow = !!(itemVal.show || itemVal.display === 'block');
+                            if (typeof itemVal.angle === 'number') customAngle = itemVal.angle;
+                        }
+                        executeToggleItem(itemName, isShow, customAngle);
+                    });
+                }
                 if (data.activeSpin && data.activeSpin.startTime && data.activeSpin.duration) {
-                    const elapsed = Date.now() - data.activeSpin.startTime;
+                    const elapsed = getSyncedServerTime() - data.activeSpin.startTime;
                     if (elapsed < data.activeSpin.duration * 1000) {
                         executeSpin(
                             data.activeSpin.duration,
@@ -890,10 +1025,14 @@
                             data.activeSpin.startTime,
                             data.activeSpin.startRotation,
                             data.activeSpin.targetRotation,
-                            data.activeSpin.spinId
+                            data.activeSpin.spinId,
+                            data.activeSpin.finalRotation
                         );
                     } else if (typeof data.activeSpin.targetRotation === 'number') {
-                        currentRotation = ((data.activeSpin.targetRotation % 360) + 360) % 360;
+                        const finalRot = typeof data.activeSpin.finalRotation === 'number'
+                            ? data.activeSpin.finalRotation
+                            : data.activeSpin.targetRotation;
+                        currentRotation = ((finalRot % 360) + 360) % 360;
                         wheelGraphic.style.transition = 'none';
                         wheelGraphic.style.transform = `rotate(${currentRotation}deg) translateZ(0)`;
                         currentSpinState = null;
@@ -910,10 +1049,10 @@
                 });
 
                 const eventNames = [
-                    'toggle_wheel', 'spin_wheel', 'pointer_light', 'zoom_pointer',
+                    'toggle_wheel', 'spin_wheel', 'spin_tick', 'spin_end', 'pointer_light', 'zoom_pointer',
                     'toggle_item', 'shuffle_special', 'show_value', 'hide_value',
                     'find_highest', 'sync_scores', 'toggle_player_card', 'reset_rotation',
-                    'sync_full_state'
+                    'sync_full_state', 'time_pong'
                 ];
 
                 eventNames.forEach(function (evName) {
@@ -922,28 +1061,7 @@
                     });
                 });
 
-                channel.on('broadcast', { event: 'request_sync' }, function () {
-                    const saved = localStorage.getItem('wheel_last_state');
-                    if (saved) {
-                        try {
-                            const state = JSON.parse(saved);
-                            channel.send({
-                                event: 'sync_full_state',
-                                type: 'broadcast',
-                                payload: {
-                                    currentRotation: currentRotation,
-                                    scores: globalScores,
-                                    wheelType: state.wheelType || (isSpecialMode ? 'special' : 'normal'),
-                                    wheelVisible: wheelGraphic.style.display !== 'none',
-                                    specialWedges: specialWedges,
-                                    playerCards: playerCardsState,
-                                    pointers: currentPointers,
-                                    activeSpin: currentSpinState
-                                }
-                            });
-                        } catch (e) { }
-                    }
-                }).on('broadcast', { event: 'spin_wheel_sync' }, function (payload) {
+                channel.on('broadcast', { event: 'spin_wheel_sync' }, function (payload) {
                     if (animationFrameId) cancelAnimationFrame(animationFrameId);
                     if (payload && payload.payload) {
                         currentRotation = payload.payload.rotation;
@@ -972,6 +1090,21 @@
                 channel.subscribe(function (status) {
                     if (status === 'SUBSCRIBED') {
                         sendSyncReq();
+                        sendTimePing();
+                        setInterval(sendTimePing, 8000);
+                        const currentItems = {};
+                        Object.keys(itemsPlacementConfig).forEach(itemName => {
+                            const el = document.getElementById('render-item-' + itemName.replace(/\s+/g, '_'));
+                            if (el && el.style.display === 'block') currentItems[itemName] = true;
+                        });
+                        channel.send({
+                            type: 'broadcast',
+                            event: 'report_rotation',
+                            payload: {
+                                currentRotation: currentRotation,
+                                itemsState: currentItems
+                            }
+                        }).catch(() => {});
                     }
                 });
             }
@@ -985,6 +1118,9 @@
             bc.onmessage = function (e) {
                 handleWheelCommand(e.data);
             };
+            try {
+                bc.postMessage({ type: 'broadcast', event: 'request_sync' });
+            } catch (err) { }
         }
 
         // Window postMessage listener
