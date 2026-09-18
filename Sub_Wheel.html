@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wheel</title>
+    <title>Sub Wheel</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
@@ -37,7 +37,7 @@
         }
 
         .wheel-area.zoomed {
-            transform: scale(2) translateY(50px);
+            transform: scale(1.8) translateY(60px);
         }
 
         .wheel-container {
@@ -54,12 +54,13 @@
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
-            transition-property: transform;
-            transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
             display: block;
             background-image: url('./Nón.png');
             position: relative;
+            will-change: transform;
+            transform: translateZ(0);
+            backface-visibility: hidden;
         }
 
         /* KHUNG HÌNH CHỮ NHẬT TRUNG TÂM */
@@ -182,10 +183,16 @@
 
         .pointer-body {
             position: absolute;
-            top: -57.5px;
+            top: -18px;
             left: 50%;
             transform: translateX(-50%);
-            filter: drop-shadow(0px 3px 5px rgba(0, 0, 0, 0.4));
+            filter: drop-shadow(0px 2px 3px rgba(0, 0, 0, 0.5));
+        }
+
+        .pointer-body svg {
+            width: 15px;
+            height: 33px;
+            display: block;
         }
 
         .pointer-body svg path {
@@ -220,27 +227,27 @@
 
             <div class="pointer-wrapper wrapper-red">
                 <div class="pointer-body" id="pointer-red">
-                    <svg width="46" height="60" viewBox="0 0 46 60" style="display: block;">
-                        <path d="M23,60 C9,38 0,28 0,18 A23,18 0 0,1 46,18 C46,28 37,38 23,60 Z" fill="var(--p-color)"
-                            stroke="white" stroke-width="2" stroke-linejoin="round" />
+                    <svg width="15" height="33" viewBox="0 0 20 44" style="display: block;">
+                        <path d="M 10 43 L 1.77 11.13 A 8.5 8.5 0 1 1 18.23 11.13 Z" fill="var(--p-color)"
+                            stroke="white" stroke-width="1.2" stroke-linejoin="round" />
                     </svg>
                 </div>
             </div>
 
             <div class="pointer-wrapper wrapper-yellow">
                 <div class="pointer-body" id="pointer-yellow">
-                    <svg width="46" height="60" viewBox="0 0 46 60" style="display: block;">
-                        <path d="M23,60 C9,38 0,28 0,18 A23,18 0 0,1 46,18 C46,28 37,38 23,60 Z" fill="var(--p-color)"
-                            stroke="white" stroke-width="2" stroke-linejoin="round" />
+                    <svg width="15" height="33" viewBox="0 0 20 44" style="display: block;">
+                        <path d="M 10 43 L 1.77 11.13 A 8.5 8.5 0 1 1 18.23 11.13 Z" fill="var(--p-color)"
+                            stroke="white" stroke-width="1.2" stroke-linejoin="round" />
                     </svg>
                 </div>
             </div>
 
             <div class="pointer-wrapper wrapper-blue">
                 <div class="pointer-body" id="pointer-blue">
-                    <svg width="46" height="60" viewBox="0 0 46 60" style="display: block;">
-                        <path d="M23,60 C9,38 0,28 0,18 A23,18 0 0,1 46,18 C46,28 37,38 23,60 Z" fill="var(--p-color)"
-                            stroke="white" stroke-width="2" stroke-linejoin="round" />
+                    <svg width="15" height="33" viewBox="0 0 20 44" style="display: block;">
+                        <path d="M 10 43 L 1.77 11.13 A 8.5 8.5 0 1 1 18.23 11.13 Z" fill="var(--p-color)"
+                            stroke="white" stroke-width="1.2" stroke-linejoin="round" />
                     </svg>
                 </div>
             </div>
@@ -255,6 +262,8 @@
         let currentRotation = 0;
         let isSpecialMode = false;
         let specialWedges = [];
+        let currentPointers = { red: 'off', yellow: 'off', blue: 'off', zoom: 'out' };
+        let currentSpinState = null;
 
         const wheelGraphic = document.getElementById('wheelGraphic');
         const wheelArea = document.getElementById('wheelArea');
@@ -321,7 +330,9 @@
                 zoomed: wheelArea.classList.contains('zoomed'),
                 popupDisplay: specialValuePopup.style.display,
                 popupText: specialValuePopup.innerText,
-                itemsState: {}
+                itemsState: {},
+                pointers: currentPointers,
+                activeSpin: currentSpinState
             };
             Object.keys(itemsPlacementConfig).forEach(itemName => {
                 const targetId = 'render-item-' + itemName.replace(/\s+/g, '_');
@@ -341,7 +352,7 @@
                 specialWedges = state.specialWedges || [];
 
                 wheelGraphic.style.transition = 'none';
-                wheelGraphic.style.transform = 'rotate(' + currentRotation + 'deg)';
+                wheelGraphic.style.transform = 'rotate(' + currentRotation + 'deg) translateZ(0)';
                 wheelGraphic.style.display = state.wheelDisplay || 'block';
                 wheelGraphic.style.backgroundImage = state.wheelBg || "url('./Nón.png')";
 
@@ -357,6 +368,35 @@
                         const el = document.getElementById(targetId);
                         if (el) el.style.display = state.itemsState[itemName];
                     });
+                }
+
+                if (state.pointers) {
+                    currentPointers = state.pointers;
+                    ['red', 'yellow', 'blue'].forEach(c => {
+                        if (state.pointers[c]) executePointerLight(c, state.pointers[c]);
+                    });
+                    if (state.pointers.zoom === 'in') wheelArea.classList.add('zoomed');
+                    else if (state.pointers.zoom === 'out') wheelArea.classList.remove('zoomed');
+                }
+
+                if (state.activeSpin && state.activeSpin.startTime && state.activeSpin.duration) {
+                    const elapsed = Date.now() - state.activeSpin.startTime;
+                    if (elapsed < state.activeSpin.duration * 1000) {
+                        executeSpin(
+                            state.activeSpin.duration,
+                            state.activeSpin.randomOffset,
+                            state.activeSpin.startTime,
+                            state.activeSpin.startRotation,
+                            state.activeSpin.targetRotation,
+                            state.activeSpin.spinId
+                        );
+                    } else if (typeof state.activeSpin.targetRotation === 'number') {
+                        currentRotation = ((state.activeSpin.targetRotation % 360) + 360) % 360;
+                        wheelGraphic.style.transition = 'none';
+                        wheelGraphic.style.transform = `rotate(${currentRotation}deg) translateZ(0)`;
+                        currentSpinState = null;
+                        saveWheelState();
+                    }
                 }
             } catch (e) { console.error(e); }
         }
@@ -396,46 +436,79 @@
 
         // BIẾN TOÀN CỤC PHỤ TRÁCH THỰC HIỆN ĐỒNG BỘ MƯỢT MÀ THEO FRAME THỜI GIAN
         let animationFrameId = null;
+        let lastProcessedSpinId = null;
+        let lastProcessedFindId = null;
 
-        function executeSpin(duration, randomOffset, startTime) {
-            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        function executeSpin(duration, randomOffset, startTime, startRotation, targetRotation, spinId) {
+            if (spinId && spinId === lastProcessedSpinId) return;
+            if (spinId) lastProcessedSpinId = spinId;
 
-            const offset = (typeof randomOffset !== 'undefined') ? randomOffset : Math.floor(Math.random() * 360);
-            const extraSpins = duration * 360;
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
 
-            const startRot = currentRotation;
-            const targetRot = currentRotation + extraSpins + offset;
-            currentRotation = targetRot;
+            const normalizedCurrent = ((currentRotation % 360) + 360) % 360;
+            const startRot = (typeof startRotation === 'number') ? startRotation : normalizedCurrent;
+            let targetRot;
+            if (typeof targetRotation === 'number') {
+                targetRot = targetRotation;
+            } else {
+                const offset = (typeof randomOffset !== 'undefined') ? randomOffset : Math.floor(Math.random() * 360);
+                const extraSpins = duration * 360;
+                targetRot = startRot + extraSpins + offset;
+            }
+
             specialValuePopup.style.display = 'none';
 
-            const startTimestamp = startTime || Date.now();
             const durationMs = duration * 1000;
+            const nowTime = Date.now();
+            const elapsedAlready = (startTime && typeof startTime === 'number') ? Math.max(0, nowTime - startTime) : 0;
 
-            // NÂNG CẤP: Hàm nội suy Quintic giúp giảm tốc siêu mịn ở giai đoạn cuối (giống quán tính thật)
+            if (elapsedAlready >= durationMs) {
+                const finalNormalized = ((targetRot % 360) + 360) % 360;
+                currentRotation = finalNormalized;
+                wheelGraphic.style.transition = 'none';
+                wheelGraphic.style.transform = `rotate(${finalNormalized}deg) translateZ(0)`;
+                currentSpinState = null;
+                saveWheelState();
+                return;
+            }
+
+            currentSpinState = {
+                duration: duration,
+                randomOffset: randomOffset,
+                startRotation: startRot,
+                targetRotation: targetRot,
+                spinId: spinId,
+                startTime: startTime || nowTime
+            };
+            saveWheelState();
+
+            const localStart = performance.now() - elapsedAlready;
+
             function easeOutQuint(t) {
                 return 1 - Math.pow(1 - t, 5);
             }
 
-            function updateProgress() {
-                const now = Date.now();
-                const elapsed = now - startTimestamp;
+            function updateProgress(now) {
+                const elapsed = now - localStart;
 
                 if (elapsed >= durationMs) {
+                    const finalNormalized = ((targetRot % 360) + 360) % 360;
+                    currentRotation = finalNormalized;
                     wheelGraphic.style.transition = 'none';
-                    wheelGraphic.style.transform = `rotate(${targetRot}deg)`;
+                    wheelGraphic.style.transform = `rotate(${finalNormalized}deg) translateZ(0)`;
+                    currentSpinState = null;
                     saveWheelState();
                     animationFrameId = null;
                 } else {
-                    if (elapsed < 0) {
-                        wheelGraphic.style.transform = `rotate(${startRot}deg)`;
-                    } else {
-                        const t = elapsed / durationMs;
-                        const progress = easeOutQuint(t);
-                        const currentPos = startRot + (targetRot - startRot) * progress;
+                    const t = Math.max(0, Math.min(1, elapsed / durationMs));
+                    const progress = easeOutQuint(t);
+                    const currentPos = startRot + (targetRot - startRot) * progress;
 
-                        wheelGraphic.style.transition = 'none';
-                        wheelGraphic.style.transform = `rotate(${currentPos}deg)`;
-                    }
+                    wheelGraphic.style.transition = 'none';
+                    wheelGraphic.style.transform = `rotate(${currentPos}deg) translateZ(0)`;
                     animationFrameId = requestAnimationFrame(updateProgress);
                 }
             }
@@ -444,15 +517,20 @@
         }
 
         function executeResetRotation() {
-            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            currentSpinState = null;
             currentRotation = 262.5;
             wheelGraphic.style.transition = 'transform 0.5s cubic-bezier(0.25, 1, 0.5, 1)';
-            wheelGraphic.style.transform = 'rotate(262.5deg)';
+            wheelGraphic.style.transform = 'rotate(262.5deg) translateZ(0)';
             specialValuePopup.style.display = 'none';
             setTimeout(saveWheelState, 600);
         }
 
         function executePointerLight(pointerName, state) {
+            currentPointers[pointerName] = state;
             const pointerObj = document.getElementById('pointer-' + pointerName);
             if (!pointerObj) return;
             if (state === 'on') {
@@ -462,6 +540,7 @@
             } else {
                 pointerObj.style.setProperty('--p-color', '#FFFFFF');
             }
+            saveWheelState();
         }
 
         function getWedgeValueAtYellowPointer() {
@@ -487,15 +566,20 @@
             saveWheelState();
         }
 
-        function executeFindHighest(startTime, counter) {
-            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        function executeFindHighest(startTime, counter, findId) {
+            if (findId && findId === lastProcessedFindId) return;
+            if (findId) lastProcessedFindId = findId;
+
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
             if (!isSpecialMode || specialWedges.length === 0) return;
 
             const parseVal = (v) => typeof v === 'string' ? parseInt(v.replace('x', '')) : v;
             let numericValues = specialWedges.map(parseVal);
             let maxVal = Math.max(...numericValues);
 
-            // Tìm tất cả các vị trí có giá trị cao nhất
             let targetIndices = [];
             numericValues.forEach((val, index) => {
                 if (val === maxVal) targetIndices.push(index);
@@ -503,34 +587,33 @@
 
             if (targetIndices.length === 0) return;
 
-            // DÙNG BIẾN ĐẾM ĐỒNG BỘ TỪ CONTROLLER TRUYỀN SANG
             let targetIndex = targetIndices[(counter || 0) % targetIndices.length];
 
             let targetCenterAngle = (targetIndex * 15) + 7.5;
-            let currentNormalized = currentRotation % 360;
+            let currentNormalized = ((currentRotation % 360) + 360) % 360;
             let targetAngleDiff = (360 - targetCenterAngle) - currentNormalized;
             if (targetAngleDiff <= 0) targetAngleDiff += 360;
 
-            const startRot = currentRotation;
-            const targetRot = currentRotation + targetAngleDiff + 1080;
-            currentRotation = targetRot;
+            const startRot = currentNormalized;
+            const targetRot = currentNormalized + targetAngleDiff + 1080;
 
             specialValuePopup.style.display = 'none';
 
-            const startTimestamp = startTime || Date.now();
+            const localStart = performance.now();
             const durationMs = 4000;
 
             function easeOutQuint(t) {
                 return 1 - Math.pow(1 - t, 5);
             }
 
-            function updateFindHighestProgress() {
-                const now = Date.now();
-                const elapsed = now - startTimestamp;
+            function updateFindHighestProgress(now) {
+                const elapsed = now - localStart;
 
                 if (elapsed >= durationMs) {
+                    const finalNormalized = ((targetRot % 360) + 360) % 360;
+                    currentRotation = finalNormalized;
                     wheelGraphic.style.transition = 'none';
-                    wheelGraphic.style.transform = `rotate(${targetRot}deg)`;
+                    wheelGraphic.style.transform = `rotate(${finalNormalized}deg) translateZ(0)`;
 
                     let realValue = specialWedges[targetIndex];
                     specialValuePopup.innerText = typeof realValue === 'number' ? realValue.toLocaleString() + " điểm" : realValue;
@@ -539,16 +622,12 @@
                     saveWheelState();
                     animationFrameId = null;
                 } else {
-                    if (elapsed < 0) {
-                        wheelGraphic.style.transform = `rotate(${startRot}deg)`;
-                    } else {
-                        const t = elapsed / durationMs;
-                        const progress = easeOutQuint(t);
-                        const currentPos = startRot + (targetRot - startRot) * progress;
+                    const t = Math.max(0, Math.min(1, elapsed / durationMs));
+                    const progress = easeOutQuint(t);
+                    const currentPos = startRot + (targetRot - startRot) * progress;
 
-                        wheelGraphic.style.transition = 'none';
-                        wheelGraphic.style.transform = `rotate(${currentPos}deg)`;
-                    }
+                    wheelGraphic.style.transition = 'none';
+                    wheelGraphic.style.transform = `rotate(${currentPos}deg) translateZ(0)`;
                     animationFrameId = requestAnimationFrame(updateFindHighestProgress);
                 }
             }
@@ -558,83 +637,167 @@
 
         loadWheelState();
 
-        try {
-            const channel = supabase.channel('wheel_room');
-            channel.on('broadcast', { event: 'toggle_wheel' }, function (payload) {
-                executeToggleWheel(payload.payload.type, payload.payload.isShow);
-            }).on('broadcast', { event: 'spin_wheel' }, function (payload) {
-                executeSpin(payload.payload.duration, payload.payload.randomOffset, payload.payload.startTime);
-            }).on('broadcast', { event: 'pointer_light' }, function (payload) {
-                executePointerLight(payload.payload.pointerName, payload.payload.state);
-            }).on('broadcast', { event: 'zoom_pointer' }, function (payload) {
-                if (payload.payload.type === 'in') wheelArea.classList.add('zoomed');
+        let syncReceived = false;
+
+        function handleWheelCommand(data) {
+            if (!data || !data.event) return;
+            if (data.event === 'toggle_item') executeToggleItem(data.itemName, data.isShow);
+            if (data.event === 'toggle_wheel') executeToggleWheel(data.type, data.isShow);
+            if (data.event === 'spin_wheel') executeSpin(data.duration, data.randomOffset, data.startTime, data.startRotation, data.targetRotation, data.spinId);
+            if (data.event === 'pointer_light') executePointerLight(data.pointerName, data.state);
+            if (data.event === 'zoom_pointer') {
+                if (data.type === 'in') wheelArea.classList.add('zoomed');
                 else wheelArea.classList.remove('zoomed');
+                currentPointers.zoom = data.type;
                 saveWheelState();
-            }).on('broadcast', { event: 'toggle_item' }, function (payload) {
-                executeToggleItem(payload.payload.itemName, payload.payload.isShow);
-            }).on('broadcast', { event: 'shuffle_special' }, function (payload) {
-                specialWedges = payload.payload.wedges;
+            }
+            if (data.event === 'shuffle_special') {
+                specialWedges = data.wedges;
                 highestSearchCounter = 0;
                 specialValuePopup.style.display = 'none';
                 saveWheelState();
-            }).on('broadcast', { event: 'show_value' }, function () {
-                executeShowValue();
-            }).on('broadcast', { event: 'hide_value' }, function () {
-                executeHideValue();
-            }).on('broadcast', { event: 'find_highest' }, function (payload) {
-                executeFindHighest(payload.payload.startTime, payload.payload.highestSearchCounter);
-            }).on('broadcast', { event: 'reset_rotation' }, function () {
-                executeResetRotation();
-            }).subscribe((status) => {
-                if (status === 'SUBSCRIBED') {
-                    channel.send({ event: 'request_sync', type: 'broadcast', payload: {} });
+            }
+            if (data.event === 'show_value') executeShowValue();
+            if (data.event === 'hide_value') executeHideValue();
+            if (data.event === 'find_highest') executeFindHighest(data.startTime, data.highestSearchCounter, data.findId);
+            if (data.event === 'reset_rotation') executeResetRotation();
+            if (data.event === 'sync_full_state') {
+                syncReceived = true;
+                if (typeof data.currentRotation === 'number') {
+                    currentRotation = data.currentRotation;
+                    wheelGraphic.style.transition = 'none';
+                    wheelGraphic.style.transform = `rotate(${currentRotation}deg) translateZ(0)`;
                 }
-            });
-
-            channel.on('broadcast', { event: 'request_sync' }, function () {
-                const saved = localStorage.getItem('wheel_last_state');
-                if (saved) {
-                    const state = JSON.parse(saved);
-                    channel.send({
-                        event: 'spin_wheel_sync',
-                        type: 'broadcast',
-                        payload: { rotation: state.currentRotation, isSpecialMode: state.isSpecialMode, wedges: state.specialWedges }
+                if (data.wheelType) {
+                    executeToggleWheel(data.wheelType, data.wheelVisible !== false);
+                }
+                if (data.specialWedges && data.specialWedges.length > 0) {
+                    specialWedges = data.specialWedges;
+                }
+                if (data.pointers) {
+                    currentPointers = data.pointers;
+                    ['red', 'yellow', 'blue'].forEach(c => {
+                        if (data.pointers[c]) executePointerLight(c, data.pointers[c]);
                     });
+                    if (data.pointers.zoom === 'in') wheelArea.classList.add('zoomed');
+                    else if (data.pointers.zoom === 'out') wheelArea.classList.remove('zoomed');
                 }
-            }).on('broadcast', { event: 'spin_wheel_sync' }, function (payload) {
-                if (animationFrameId) cancelAnimationFrame(animationFrameId);
-                currentRotation = payload.payload.rotation;
-                isSpecialMode = payload.payload.isSpecialMode;
-                specialWedges = payload.payload.wedges;
-                wheelGraphic.style.transition = 'none';
-                wheelGraphic.style.transform = 'rotate(' + currentRotation + 'deg)';
+                if (data.activeSpin && data.activeSpin.startTime && data.activeSpin.duration) {
+                    const elapsed = Date.now() - data.activeSpin.startTime;
+                    if (elapsed < data.activeSpin.duration * 1000) {
+                        executeSpin(
+                            data.activeSpin.duration,
+                            data.activeSpin.randomOffset,
+                            data.activeSpin.startTime,
+                            data.activeSpin.startRotation,
+                            data.activeSpin.targetRotation,
+                            data.activeSpin.spinId
+                        );
+                    } else if (typeof data.activeSpin.targetRotation === 'number') {
+                        currentRotation = ((data.activeSpin.targetRotation % 360) + 360) % 360;
+                        wheelGraphic.style.transition = 'none';
+                        wheelGraphic.style.transform = `rotate(${currentRotation}deg) translateZ(0)`;
+                        currentSpinState = null;
+                    }
+                }
                 saveWheelState();
-            });
+            }
+        }
 
-        } catch (e) { }
+        try {
+            if (supabase) {
+                const channel = supabase.channel('wheel_room', {
+                    config: { broadcast: { self: false } }
+                });
+
+                const eventNames = [
+                    'toggle_wheel', 'spin_wheel', 'pointer_light', 'zoom_pointer',
+                    'toggle_item', 'shuffle_special', 'show_value', 'hide_value',
+                    'find_highest', 'reset_rotation', 'sync_full_state'
+                ];
+
+                eventNames.forEach(function (evName) {
+                    channel.on('broadcast', { event: evName }, function (payload) {
+                        handleWheelCommand({ event: evName, ...(payload ? payload.payload : {}) });
+                    });
+                });
+
+                channel.on('broadcast', { event: 'request_sync' }, function () {
+                    const saved = localStorage.getItem('wheel_last_state');
+                    if (saved) {
+                        try {
+                            const state = JSON.parse(saved);
+                            channel.send({
+                                event: 'sync_full_state',
+                                type: 'broadcast',
+                                payload: {
+                                    currentRotation: currentRotation,
+                                    wheelType: state.wheelType || (isSpecialMode ? 'sub_wheel' : 'normal'),
+                                    wheelVisible: wheelGraphic.style.display !== 'none',
+                                    specialWedges: specialWedges,
+                                    pointers: currentPointers,
+                                    activeSpin: currentSpinState
+                                }
+                            });
+                        } catch (e) { }
+                    }
+                }).on('broadcast', { event: 'spin_wheel_sync' }, function (payload) {
+                    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                    if (payload && payload.payload) {
+                        currentRotation = payload.payload.rotation;
+                        isSpecialMode = payload.payload.isSpecialMode;
+                        specialWedges = payload.payload.wedges;
+                        wheelGraphic.style.transition = 'none';
+                        wheelGraphic.style.transform = 'rotate(' + currentRotation + 'deg) translateZ(0)';
+                        saveWheelState();
+                    }
+                });
+
+                let syncRetries = 0;
+                function sendSyncReq() {
+                    if (syncReceived) return;
+                    channel.send({
+                        type: 'broadcast',
+                        event: 'request_sync',
+                        payload: {}
+                    }).catch(e => console.warn(e));
+                    syncRetries++;
+                    if (syncRetries < 4 && !syncReceived) {
+                        setTimeout(sendSyncReq, 1000);
+                    }
+                }
+
+                channel.subscribe(function (status) {
+                    if (status === 'SUBSCRIBED') {
+                        sendSyncReq();
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn('Supabase Sub_Wheel error:', e);
+        }
+
+        // BroadcastChannel listener
+        if (typeof BroadcastChannel !== 'undefined') {
+            const bc = new BroadcastChannel('wheel_channel');
+            bc.onmessage = function (e) {
+                handleWheelCommand(e.data);
+            };
+        }
+
+        // Window postMessage listener
+        window.addEventListener('message', function (e) {
+            if (e.data && (e.data.type === 'wheel_cmd' || e.data.event)) {
+                handleWheelCommand(e.data);
+            }
+        });
 
         window.addEventListener('storage', function (e) {
-            if (e.key === 'local_wheel_cmd') {
-                const data = JSON.parse(e.newValue);
-                if (data.event === 'toggle_item') executeToggleItem(data.itemName, data.isShow);
-                if (data.event === 'toggle_wheel') executeToggleWheel(data.type, data.isShow);
-                if (data.event === 'spin_wheel') executeSpin(data.duration, data.randomOffset, data.startTime);
-                if (data.event === 'pointer_light') executePointerLight(data.pointerName, data.state);
-                if (data.event === 'zoom_pointer') {
-                    if (data.type === 'in') wheelArea.classList.add('zoomed');
-                    else wheelArea.classList.remove('zoomed');
-                    saveWheelState();
-                }
-                if (data.event === 'shuffle_special') {
-                    specialWedges = data.wedges;
-                    highestSearchCounter = 0;
-                    specialValuePopup.style.display = 'none';
-                    saveWheelState();
-                }
-                if (data.event === 'show_value') executeShowValue();
-                if (data.event === 'hide_value') executeHideValue();
-                if (data.event === 'find_highest') executeFindHighest(data.startTime, data.highestSearchCounter);
-                if (data.event === 'reset_rotation') executeResetRotation();
+            if (e.key === 'local_wheel_cmd' && e.newValue) {
+                try {
+                    const data = JSON.parse(e.newValue);
+                    handleWheelCommand(data);
+                } catch (err) { }
             }
         });
 

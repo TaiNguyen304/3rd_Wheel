@@ -122,6 +122,7 @@
 
         .block-yellow {
             border-color: yellow;
+            background-color: #000000;
         }
 
         .block-blue {
@@ -309,27 +310,165 @@
     <script>
         var supabaseUrl = 'https://vjwwbzjzcbtkksehwfll.supabase.co';
         var supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZqd3diemp6Y2J0a2tzZWh3ZmxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NDIyOTYsImV4cCI6MjA5NTUxODI5Nn0.Zcn4hvlLtRirM-SPGrFvu3ivu8RYF9WngvbxCMCGfh4';
-        var supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+        var supabase = window.supabase ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
 
         let highestSearchCounter = 0;
-        const channel = supabase.channel('wheel_room', {
-            config: { broadcast: { self: true } }
-        });
-        channel.subscribe();
+        let channel = null;
+        let isSubscribed = false;
+        let pendingMessages = [];
 
-        function sendEvent(eventName, payloadData) {
-            channel.send({
+        let currentRotation = 0;
+        let currentWheelType = 'normal';
+        let currentWheelVisible = true;
+        let currentSpecialWedges = [];
+        let currentPointers = { red: 'off', yellow: 'off', blue: 'off', zoom: 'out' };
+        let currentSpinState = null;
+
+        function saveControllerState() {
+            try {
+                localStorage.setItem('controller_saved_state', JSON.stringify({
+                    currentRotation,
+                    currentWheelType,
+                    currentWheelVisible,
+                    currentSpecialWedges,
+                    currentPointers,
+                    globalScores,
+                    playerCardsState,
+                    currentSpinState
+                }));
+            } catch (e) { }
+        }
+
+        function loadControllerState() {
+            try {
+                const saved = localStorage.getItem('controller_saved_state');
+                if (!saved) return;
+                const data = JSON.parse(saved);
+                if (typeof data.currentRotation === 'number') currentRotation = data.currentRotation;
+                if (data.currentWheelType) currentWheelType = data.currentWheelType;
+                if (typeof data.currentWheelVisible === 'boolean') currentWheelVisible = data.currentWheelVisible;
+                if (data.currentSpecialWedges && data.currentSpecialWedges.length) {
+                    currentSpecialWedges = data.currentSpecialWedges;
+                    renderGrid(currentSpecialWedges);
+                    if (typeof renderSubGrid === 'function') renderSubGrid(currentSpecialWedges);
+                }
+                if (data.currentPointers) currentPointers = data.currentPointers;
+                if (data.globalScores) {
+                    globalScores = data.globalScores;
+                    syncScoresToWheel();
+                }
+                if (data.playerCardsState) {
+                    playerCardsState = data.playerCardsState;
+                    ['red', 'yellow', 'blue'].forEach(c => {
+                        if (Array.isArray(playerCardsState[c])) {
+                            playerCardsState[c].forEach((st, idx) => {
+                                const btn = document.getElementById(`btn-card-${c}-${idx}`);
+                                if (btn) {
+                                    if (st) btn.classList.add('active-status');
+                                    else btn.classList.remove('active-status');
+                                }
+                            });
+                        }
+                    });
+                }
+                if (data.currentSpinState && data.currentSpinState.startTime) {
+                    const elapsed = Date.now() - data.currentSpinState.startTime;
+                    if (elapsed < data.currentSpinState.duration * 1000) {
+                        currentSpinState = data.currentSpinState;
+                    }
+                }
+            } catch (e) { }
+        }
+
+        const localBroadcastChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('wheel_channel') : null;
+
+        function initSupabaseChannel() {
+            if (!supabase) return;
+            try {
+                channel = supabase.channel('wheel_room', {
+                    config: { broadcast: { self: true } }
+                });
+
+                // When a new wheel or screen requests synchronization:
+                channel.on('broadcast', { event: 'request_sync' }, function () {
+                    sendFullState();
+                });
+
+                channel.subscribe(function (status) {
+                    if (status === 'SUBSCRIBED') {
+                        isSubscribed = true;
+                        while (pendingMessages.length > 0) {
+                            const msg = pendingMessages.shift();
+                            channel.send(msg).catch(e => console.warn(e));
+                        }
+                        sendFullState();
+                    } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+                        isSubscribed = false;
+                    }
+                });
+            } catch (e) {
+                console.warn('Supabase realtime error:', e);
+            }
+        }
+        initSupabaseChannel();
+
+        function sendFullState() {
+            // Check if active spin is still valid
+            if (currentSpinState && currentSpinState.startTime) {
+                const elapsed = Date.now() - currentSpinState.startTime;
+                if (elapsed >= currentSpinState.duration * 1000) {
+                    currentSpinState = null;
+                }
+            }
+            sendEvent('sync_full_state', {
+                currentRotation: currentRotation,
+                scores: globalScores,
+                wheelType: currentWheelType,
+                wheelVisible: currentWheelVisible,
+                specialWedges: currentSpecialWedges,
+                playerCards: playerCardsState,
+                pointers: currentPointers,
+                activeSpin: currentSpinState
+            });
+        }
+
+        function sendEvent(eventName, payloadData = {}) {
+            const msg = {
                 type: 'broadcast',
                 event: eventName,
                 payload: payloadData
-            });
-            localStorage.setItem('local_wheel_cmd', JSON.stringify({
-                event: eventName,
-                ...payloadData
-            }));
+            };
+
+            if (channel && isSubscribed) {
+                channel.send(msg).catch(function (e) {
+                    console.warn('Supabase broadcast send error:', e);
+                });
+            } else if (channel) {
+                pendingMessages.push(msg);
+            }
+
+            if (localBroadcastChannel) {
+                try {
+                    localBroadcastChannel.postMessage({
+                        event: eventName,
+                        ...payloadData
+                    });
+                } catch (e) { }
+            }
+
+            try {
+                localStorage.setItem('local_wheel_cmd', JSON.stringify({
+                    event: eventName,
+                    _ts: Date.now(),
+                    ...payloadData
+                }));
+            } catch (e) { }
         }
 
         function toggleWheel(type, isShow) {
+            currentWheelType = type;
+            currentWheelVisible = isShow;
+            saveControllerState();
             sendEvent('toggle_wheel', { type, isShow });
         }
 
@@ -343,19 +482,49 @@
 
             const extraSpins = duration * 360;
             const randomOffset = Math.floor(Math.random() * 360);
+            const normalizedStart = ((currentRotation % 360) + 360) % 360;
+            const targetRotation = normalizedStart + extraSpins + randomOffset;
+            currentRotation = targetRotation % 360;
 
-            // LẤY MỐC THỜI GIAN THỰC KHI BẮT ĐẦU ẤN SPIN (Tính bằng mili giây)
-            const startTime = Date.now();
+            const spinId = 'spin_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+            const spinStartTime = Date.now();
 
-            // Truyền thêm startTime sang cho các màn hình hiển thị
-            sendEvent('spin_wheel', { duration, randomOffset, startTime });
+            currentSpinState = {
+                duration,
+                randomOffset,
+                startRotation: normalizedStart,
+                targetRotation: targetRotation,
+                spinId: spinId,
+                startTime: spinStartTime
+            };
+            saveControllerState();
+
+            setTimeout(() => {
+                if (currentSpinState && currentSpinState.spinId === spinId) {
+                    currentSpinState = null;
+                    saveControllerState();
+                }
+            }, duration * 1000 + 300);
+
+            sendEvent('spin_wheel', {
+                duration,
+                randomOffset,
+                startRotation: normalizedStart,
+                targetRotation: targetRotation,
+                spinId: spinId,
+                startTime: spinStartTime
+            });
         }
 
         function setPointer(pointerName, state) {
+            currentPointers[pointerName] = state;
+            saveControllerState();
             sendEvent('pointer_light', { pointerName, state });
         }
 
         function zoomPointer(type) {
+            currentPointers.zoom = type;
+            saveControllerState();
             sendEvent('zoom_pointer', { type });
         }
 
@@ -383,6 +552,7 @@
                 [baseWedges[i], baseWedges[j]] = [baseWedges[j], baseWedges[i]];
             }
 
+            currentSpecialWedges = baseWedges;
             // Gửi sự kiện cập nhật cấu trúc mảng nón phụ sang hệ thống Realtime
             sendEvent('shuffle_special', { wedges: baseWedges });
 
@@ -414,8 +584,6 @@
                 container.appendChild(cell);
             });
         }
-
-        let currentSpecialWedges = [];
 
         function shuffleSpecialWheel() {
             const prizeRadio = document.querySelector('input[name="specialPrize"]:checked').value;
@@ -468,9 +636,13 @@
         function showValue() { sendEvent('show_value', {}); }
         function hideValue() { sendEvent('hide_value', {}); }
         function findHighestWedge() {
-            const startTime = Date.now();
-            sendEvent('find_highest', { startTime, highestSearchCounter: highestSearchCounter });
             highestSearchCounter++;
+            const findId = 'find_' + Date.now() + '_' + highestSearchCounter;
+            sendEvent('find_highest', {
+                startTime: Date.now(),
+                highestSearchCounter: highestSearchCounter,
+                findId: findId
+            });
         }
 
         const itemsList = [
@@ -520,6 +692,7 @@
         }
 
         function syncScoresToWheel() {
+            saveControllerState();
             sendEvent('sync_scores', globalScores);
             document.getElementById('ctrl-red-round-box').innerText = "Điểm Vòng: " + globalScores.redRound.toLocaleString('vi-VN');
             document.getElementById('ctrl-red-total-box').innerText = "Điểm Tổng: " + globalScores.redTotal.toLocaleString('vi-VN');
@@ -567,6 +740,7 @@
             if (currentState) btn.classList.add('active-status');
             else btn.classList.remove('active-status');
 
+            saveControllerState();
             sendEvent('toggle_player_card', { color, cardIdx, isActive: currentState });
         }
 
@@ -586,9 +760,13 @@
         initPlayerCardControls('red');
         initPlayerCardControls('yellow');
         initPlayerCardControls('blue');
+        loadControllerState();
         syncScoresToWheel();
 
         function resetWheelRotation() {
+            currentRotation = 262.5;
+            currentSpinState = null;
+            saveControllerState();
             sendEvent('reset_rotation', {});
         }
 
